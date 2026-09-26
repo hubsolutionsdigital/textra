@@ -9,6 +9,9 @@ export const KINDS = {
 
 export const POSITIVE_KINDS = ['love', 'like', 'great'];
 
+/** Change requests and questions need work from the team; positive reactions don't. */
+export const isActionable = (comment) => !POSITIVE_KINDS.includes(comment.kind);
+
 /** What the client should focus on in each round. The last round is always "final details". */
 const FOCUS = [
   {

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, fileUrls } from '../api.js';
 import AppHeader from '../components/AppHeader.jsx';
 import CommentCard from '../components/CommentCard.jsx';
-import { versionLabel } from '../guidance.js';
+import { isActionable, versionLabel } from '../guidance.js';
 import { shareUrl, stageInfo } from '../stage.js';
 import { formatDate, plural } from '../util.js';
 
@@ -72,7 +72,14 @@ export default function ProjectAdmin() {
 
         {tab === 'pages' && <PagesTab project={project} screens={screens} comments={comments} mutate={mutate} />}
         {tab === 'feedback' && (
-          <FeedbackTab project={project} screens={screens} comments={comments} urls={urls} mutate={mutate} />
+          <FeedbackTab
+            project={project}
+            screens={screens}
+            comments={comments}
+            urls={urls}
+            mutate={mutate}
+            screenHref={(s) => `/projects/${project.id}/screens/${s.id}`}
+          />
         )}
         {tab === 'activity' && <ActivityTab events={events} />}
         {tab === 'settings' && <SettingsTab project={project} mutate={mutate} />}
@@ -141,7 +148,7 @@ function ShareBox({ project }) {
 function NextStep({ project, screens, comments, mutate }) {
   const r = project.current_round;
   const roundComments = comments.filter((c) => c.round === r);
-  const open = roundComments.filter((c) => c.status === 'open').length;
+  const open = roundComments.filter((c) => c.status === 'open' && isActionable(c)).length;
   const lastRound = r >= project.max_rounds;
   const updatedForNext = screens.filter((s) => s.current_version && s.current_version.round > r).length;
   const confirmAndAdvance = (action, message) => window.confirm(message) && mutate('POST', '/advance', { action });
@@ -167,6 +174,9 @@ function NextStep({ project, screens, comments, mutate }) {
             <strong>Waiting for the client to review round {r}</strong>
             <p className="muted">
               {plural(roundComments.length, 'comment')} so far. You’ll see them live; the round locks once they submit.
+              {project.notify_emails
+                ? ` We’ll email ${project.notify_emails} when they do.`
+                : ' Add notification emails in Settings to get an email when they do.'}
             </p>
           </div>
         </div>
@@ -349,7 +359,7 @@ function ScreenRow({ project, screen, comments, mutate, onMove, first, last }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(screen.title);
   const [note, setNote] = useState(screen.note);
-  const open = comments.filter((c) => c.status === 'open').length;
+  const open = comments.filter((c) => c.status === 'open' && isActionable(c)).length;
   const locked = project.stage === 'approved';
   const needsUpdate =
     project.stage === 'revising' && (!screen.current_version || screen.current_version.round <= project.current_round);
@@ -448,14 +458,32 @@ function ScreenRow({ project, screen, comments, mutate, onMove, first, last }) {
   );
 }
 
-function FeedbackTab({ project, screens, comments, urls, mutate }) {
-  const [round, setRound] = useState(project.current_round);
+/** Comments grouped by page with done/reply controls. Shared by the dashboard and the team link page. */
+export function FeedbackTab({ project, screens, comments, urls, mutate, screenHref, initialRound }) {
+  const [round, setRound] = useState(initialRound ?? project.current_round);
   const [onlyOpen, setOnlyOpen] = useState(false);
   const rounds = [...new Set(comments.map((c) => c.round))].sort((a, b) => b - a);
-  const shown = comments.filter((c) => (round === 'all' || c.round === round) && (!onlyOpen || c.status === 'open'));
+  const shown = comments.filter(
+    (c) => (round === 'all' || c.round === round) && (!onlyOpen || (c.status === 'open' && isActionable(c))),
+  );
+  const inScope = comments.filter((c) => (round === 'all' || c.round === round) && isActionable(c));
+  const handled = inScope.filter((c) => c.status !== 'open').length;
 
   return (
     <div className="stack">
+      {inScope.length > 0 && (
+        <div className="done-progress">
+          <div className="row">
+            <strong>
+              {handled} of {inScope.length} change requests handled
+            </strong>
+            {handled === inScope.length && <span className="badge badge-green">All done 🎉</span>}
+          </div>
+          <div className="progress">
+            <div style={{ width: `${(handled / inScope.length) * 100}%` }} />
+          </div>
+        </div>
+      )}
       <div className="row">
         <select value={round} onChange={(e) => setRound(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
           <option value="all">All rounds</option>
@@ -478,7 +506,7 @@ function FeedbackTab({ project, screens, comments, urls, mutate }) {
           <section key={s.id} className="feedback-group">
             <div className="row">
               <h3>{s.title}</h3>
-              <Link className="link-btn" to={`/projects/${project.id}/screens/${s.id}`}>
+              <Link className="link-btn" to={screenHref(s)}>
                 Open on design →
               </Link>
             </div>
@@ -514,6 +542,34 @@ export function ActivityTab({ events }) {
   );
 }
 
+function TeamLink({ project }) {
+  const url = `${window.location.origin}/t/${project.team_token}`;
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="stack-sm">
+      <span className="field-label">Team feedback link</span>
+      <div className="share-row">
+        <input readOnly value={url} onFocus={(e) => e.target.select()} />
+        <button
+          type="button"
+          className="btn"
+          onClick={() => {
+            navigator.clipboard?.writeText(url);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? 'Copied ✓' : 'Copy'}
+        </button>
+      </div>
+      <span className="muted small">
+        Included in every notification email. Anyone with it can view comments and mark them done, so keep it inside
+        your team.
+      </span>
+    </div>
+  );
+}
+
 function SettingsTab({ project, mutate }) {
   const navigate = useNavigate();
   const [form, setForm] = useState({
@@ -522,6 +578,7 @@ function SettingsTab({ project, mutate }) {
     welcome_message: project.welcome_message,
     live_url: project.live_url,
     max_rounds: project.max_rounds,
+    notify_emails: project.notify_emails,
   });
   const [saved, setSaved] = useState(false);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -552,6 +609,20 @@ function SettingsTab({ project, mutate }) {
         Welcome message shown to the client
         <textarea rows={3} value={form.welcome_message} onChange={set('welcome_message')} />
       </label>
+      <label>
+        Notify these emails when the client submits a round
+        <input
+          value={form.notify_emails}
+          onChange={set('notify_emails')}
+          placeholder="pm@studio.com, designer@studio.com"
+          required
+        />
+        <span className="muted small">
+          Separate addresses with commas. Each email has a link where the team can mark comments done, with no
+          sign-in needed.
+        </span>
+      </label>
+      <TeamLink project={project} />
       <label>
         Live site URL <span className="muted">(shown to the client after approval)</span>
         <input value={form.live_url} onChange={set('live_url')} placeholder="https://staging.client-site.com" />

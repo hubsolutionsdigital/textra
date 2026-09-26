@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KINDS } from '../guidance.js';
+import { KINDS, isActionable } from '../guidance.js';
 import { timeAgo } from '../util.js';
 
 const STATUS = {
@@ -11,14 +11,16 @@ const STATUS = {
  * One piece of feedback. Agency mode adds status + reply controls;
  * client mode lets the author remove their own comment while the round is open.
  */
-export default function CommentCard({ comment, number, urls, mode, canDelete, onDelete, onUpdate, compact }) {
+export default function CommentCard({ comment, number, urls, mode, canDelete, onDelete, onUpdate, compact, pending }) {
   const kind = KINDS[comment.kind] ?? KINDS.change;
   const [reply, setReply] = useState(comment.agency_reply);
   const [editingReply, setEditingReply] = useState(false);
   const status = STATUS[comment.status];
+  const actionable = isActionable(comment);
+  const handled = comment.status !== 'open';
 
   return (
-    <div className={`comment-card tone-${kind.tone} ${compact ? 'compact' : ''}`}>
+    <div className={`comment-card tone-${kind.tone} ${compact ? 'compact' : ''} ${handled ? 'handled' : ''}`}>
       <div className="comment-head">
         {number != null && <span className={`pin-badge tone-${kind.tone}`}>{number}</span>}
         <span className="comment-kind">
@@ -40,10 +42,18 @@ export default function CommentCard({ comment, number, urls, mode, canDelete, on
         <span>
           {comment.author_name} · {timeAgo(comment.created_at)}
         </span>
-        {status && (
-          <span className={`status-chip status-${comment.status}`}>
+        {status ? (
+          <span
+            className={`status-chip status-${comment.status}`}
+            title={comment.status_changed_at ? `Updated ${timeAgo(comment.status_changed_at)}` : undefined}
+          >
             {status.icon} {status.label}
+            {mode === 'client' && comment.status_changed_at && (
+              <span className="status-when"> · {timeAgo(comment.status_changed_at)}</span>
+            )}
           </span>
+        ) : (
+          pending && actionable && <span className="status-chip status-pending">⏳ Working on it</span>
         )}
       </div>
       {comment.agency_reply && !editingReply && (
@@ -56,7 +66,27 @@ export default function CommentCard({ comment, number, urls, mode, canDelete, on
           Remove
         </button>
       )}
-      {mode === 'agency' && (
+      {mode === 'agency' && !actionable && (
+        <div className="comment-actions">
+          <span className="muted small">No action needed</span>
+          <button className="link-btn" onClick={() => setEditingReply((v) => !v)}>
+            {comment.agency_reply ? 'Edit reply' : 'Reply'}
+          </button>
+          {editingReply && (
+            <form
+              className="reply-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                onUpdate(comment, { agency_reply: reply.trim() }).then(() => setEditingReply(false));
+              }}
+            >
+              <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={2} />
+              <button className="btn btn-sm btn-primary">Save reply</button>
+            </form>
+          )}
+        </div>
+      )}
+      {mode === 'agency' && actionable && (
         <div className="comment-actions">
           {comment.status === 'open' ? (
             <button className="btn btn-sm" onClick={() => onUpdate(comment, { status: 'done' })}>

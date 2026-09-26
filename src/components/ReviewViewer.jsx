@@ -70,6 +70,8 @@ export default function ReviewViewer({
     urls,
     mode,
     canDelete: canComment && c.round === liveRound && c.author_name === me,
+    // For the client: feedback from a submitted round that the team hasn't closed yet.
+    pending: mode === 'client' && c.status === 'open' && !(project.stage === 'review' && c.round === project.current_round),
     onDelete: async (cm) => {
       await onDelete(cm);
       setActiveId(null);

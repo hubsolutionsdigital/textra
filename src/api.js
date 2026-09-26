@@ -19,8 +19,8 @@ export async function api(method, url, body) {
 }
 
 /** URL builders that differ between the agency (signed in) and client (share link) views. */
-export function fileUrls({ projectId, token }) {
-  const base = token ? `/api/share/${token}` : `/api/projects/${projectId}`;
+export function fileUrls({ projectId, token, teamToken }) {
+  const base = token ? `/api/share/${token}` : teamToken ? `/api/team/${teamToken}` : `/api/projects/${projectId}`;
   return {
     version: (id) => `${base}/versions/${id}/file`,
     attachment: (id) => `${base}/attachments/${id}`,

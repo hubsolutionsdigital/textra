@@ -8,7 +8,11 @@ approval and a "development has started" hand-off.
 ## What it does
 
 **Agency (signed-in)**
-- Create a project, set how many revision rounds are included (default **3**), and add a welcome message.
+- Create a project, set how many revision rounds are included (default **3**), add a welcome message, and list the
+  **emails to notify** (required).
+- Every time the client submits a round, those addresses get an email summarising the comments. It includes a
+  **team link** (`/t/…`) where anyone on the team can open the comments, see them pinned on the design, and mark
+  them **Done** or **Discussed** or reply, without signing in.
 - Upload one PDF per page ("Home", "About"…). Drag & drop several at once, then reorder or rename them, and add a note per page.
 - Copy the client link. The same link works for every round.
 - See feedback live, mark comments **Done** or **Discussed**, and reply. Replies show to the client in the next round.
@@ -28,6 +32,9 @@ approval and a "development has started" hand-off.
 - After 10 minutes of review time with unsent comments, the portal asks whether they'd like to submit this batch.
 - Submitting locks the round with a confetti celebration. When the next round opens, the client uses the same link.
   Earlier comments show as faint dots on the design, and hovering one reveals what was said, plus the agency's status and reply.
+  While the team works, the client sees live progress ("2 of 3 done") and each change request marked
+  ✅ Done, 💬 Discussed or ⏳ Working on it. When the next round opens, they see "What we changed from your round 1 feedback".
+  Positive reactions (❤️ 👍 🎉) never count as work to do.
   A **Feedback log** lists every round.
 - After the last round, a "that's a wrap" celebration shows. When the final design arrives, there's an **Approve design** button,
   and approving triggers the "Development has started 🚀" screen with the live URL once shared.
@@ -57,11 +64,20 @@ Environment variables:
 | --- | --- | --- |
 | `PORT` | `3001` | HTTP port |
 | `DATA_DIR` | `./data` | SQLite database and uploaded files. Put this on a persistent volume. |
+| `APP_URL` | request host | Public URL used for links in emails, e.g. `https://review.yourstudio.com`. **Set this in production.** |
+| `SMTP_URL` | unset | SMTP connection, e.g. `smtps://user:pass@smtp.example.com`. Or use `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (`SMTP_SECURE=true` for implicit TLS). |
+| `MAIL_FROM` | `Design Review Portal <no-reply@localhost>` | Sender address for notification emails. |
+| `TRUST_PROXY` | unset | Express `trust proxy` setting when running behind a reverse proxy. |
 | `INSECURE_COOKIES` | unset | Set to `1` to allow login over plain HTTP when `NODE_ENV=production` (e.g. local testing). |
 
 Run the API tests with `npm test`.
 
+Without SMTP settings, emails aren't sent. They're saved as `.eml` files in `DATA_DIR/outbox/` so you can open and
+check them. The project's activity log records every email sent, or the error if sending failed.
+
 ## Notes and limits
+- The team link in notification emails works without signing in, so anyone who has it can change comment statuses.
+  Only send it to your team.
 
 - Clients are identified only by the name they type. That's intentional to keep things frictionless, but it means
   anyone with the link can comment, so treat the link like a password.

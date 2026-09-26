@@ -4,7 +4,7 @@ import { api, fileUrls } from '../api.js';
 import Modal from '../components/Modal.jsx';
 import ReviewViewer from '../components/ReviewViewer.jsx';
 import CommentCard from '../components/CommentCard.jsx';
-import { KINDS, ordinal, roundFocus } from '../guidance.js';
+import { KINDS, isActionable, ordinal, roundFocus } from '../guidance.js';
 import { celebrate } from '../confetti.js';
 import { plural, storage } from '../util.js';
 
@@ -287,7 +287,16 @@ function Overview({ data, name, urls, openSubmit }) {
 
   return (
     <main className="client-main">
-      {project.stage === 'revising' && <SubmittedBanner project={project} />}
+      {project.stage === 'revising' && (
+        <>
+          <SubmittedBanner project={project} />
+          <RoundProgress
+            comments={data.comments}
+            round={project.current_round}
+            title={`Progress on your round ${project.current_round} feedback`}
+          />
+        </>
+      )}
       {project.stage === 'final' && (
         <div className="banner banner-purple">
           <div className="banner-emoji">✨</div>
@@ -307,6 +316,13 @@ function Overview({ data, name, urls, openSubmit }) {
           </h1>
           {project.welcome_message && <p className="welcome">{project.welcome_message}</p>}
           <RoundTrack project={project} />
+          {project.current_round > 1 && (
+            <RoundProgress
+              comments={data.comments}
+              round={project.current_round - 1}
+              title={`What we changed from your round ${project.current_round - 1} feedback`}
+            />
+          )}
         </section>
       )}
 
@@ -441,6 +457,32 @@ function SubmittedBanner({ project }) {
   );
 }
 
+/** How much of a round's feedback the team has worked through. Updates live as they mark comments done. */
+function RoundProgress({ comments, round, title }) {
+  const list = comments.filter((c) => c.round === round && isActionable(c));
+  if (!list.length) return null;
+  const done = list.filter((c) => c.status === 'done').length;
+  const discussed = list.filter((c) => c.status === 'wontfix').length;
+  const handled = done + discussed;
+  return (
+    <div className="round-progress">
+      <div className="row">
+        <strong className="grow">{title}</strong>
+        <span className="muted small">
+          {handled === list.length ? 'All done 🎉' : `${handled} of ${list.length} done`}
+        </span>
+      </div>
+      <div className="progress">
+        <div style={{ width: `${(handled / list.length) * 100}%` }} />
+      </div>
+      <div className="muted small">
+        ✅ {done} changed{discussed > 0 && ` · 💬 ${discussed} discussed`}
+        {list.length - handled > 0 && ` · ⏳ ${list.length - handled} in progress`}
+      </div>
+    </div>
+  );
+}
+
 /** Every round's feedback in one place, newest round first. */
 function FeedbackLog({ data, urls }) {
   const { comments, screens, project } = data;
@@ -458,13 +500,18 @@ function FeedbackLog({ data, urls }) {
       </div>
       {rounds.map((r) => {
         const list = comments.filter((c) => c.round === r);
-        const doneCount = list.filter((c) => c.status !== 'open').length;
+        const actionable = list.filter(isActionable);
+        const doneCount = actionable.filter((c) => c.status !== 'open').length;
+        const pct = actionable.length ? Math.round((doneCount / actionable.length) * 100) : 100;
         return (
           <div key={r} className="log-round">
             <button className="log-round-head" onClick={() => setOpenRound(openRound === r ? null : r)}>
               <strong>Round {r}</strong>
               <span className="muted small">
-                {plural(list.length, 'comment')} · {doneCount} addressed
+                {plural(list.length, 'comment')} · {doneCount}/{actionable.length} changes done
+              </span>
+              <span className="mini-progress" aria-label={`${pct}% done`}>
+                <span style={{ width: `${pct}%` }} />
               </span>
               <span className="muted">{openRound === r ? '−' : '+'}</span>
             </button>
@@ -479,7 +526,7 @@ function FeedbackLog({ data, urls }) {
                     </Link>
                     <div className="feedback-cards">
                       {items.map((c) => (
-                        <CommentCard key={c.id} comment={c} urls={urls} mode="client" compact />
+                        <CommentCard key={c.id} comment={c} urls={urls} mode="client" compact pending />
                       ))}
                     </div>
                   </div>

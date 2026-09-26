@@ -1581,3 +1581,61 @@ label {
     max-width: none;
   }
 }
+
+/* ---------- feedback progress ---------- */
+.stack-sm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-label {
+  font-weight: 500;
+  font-size: 0.92rem;
+}
+.done-progress,
+.round-progress {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.round-progress {
+  margin-top: 14px;
+}
+.done-progress .progress,
+.round-progress .progress {
+  margin: 0;
+}
+.done-progress .progress div,
+.round-progress .progress div {
+  background: linear-gradient(90deg, var(--success), #2ec4b6);
+}
+.mini-progress {
+  width: 70px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.mini-progress span {
+  display: block;
+  height: 100%;
+  background: var(--success);
+}
+.status-pending {
+  color: #b35c00;
+}
+.status-wontfix {
+  color: var(--question);
+}
+.status-when {
+  font-weight: 400;
+  color: var(--muted);
+}
+.comment-card.handled {
+  background: #fbfefc;
+}

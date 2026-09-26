@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
+import { useAuth } from '../auth.jsx';
 import AppHeader from '../components/AppHeader.jsx';
 import Modal from '../components/Modal.jsx';
 import { stageInfo } from '../stage.js';
@@ -80,7 +81,14 @@ export default function Projects() {
 
 function NewProject({ onClose }) {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: '', client_name: '', max_rounds: 3, welcome_message: '' });
+  const { user } = useAuth();
+  const [form, setForm] = useState({
+    name: '',
+    client_name: '',
+    max_rounds: 3,
+    welcome_message: '',
+    notify_emails: user?.email ?? '',
+  });
   const [error, setError] = useState('');
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -105,6 +113,19 @@ function NewProject({ onClose }) {
         <label>
           Client / company name
           <input value={form.client_name} onChange={set('client_name')} placeholder="e.g. Acme Co." />
+        </label>
+        <label>
+          Notify these emails when the client submits a round
+          <input
+            value={form.notify_emails}
+            onChange={set('notify_emails')}
+            placeholder="pm@studio.com, designer@studio.com"
+            required
+          />
+          <span className="muted small">
+            Separate addresses with commas. Each email has a link to the client’s comments where your team can mark
+            them done.
+          </span>
         </label>
         <label>
           Revision rounds included

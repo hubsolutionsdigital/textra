@@ -9,12 +9,15 @@ process.env.DATA_DIR = dir;
 const { openDb } = await import('./db.js');
 const { createApp } = await import('./app.js');
 
+const sent = [];
+const mailer = { send: async (m) => sent.push(m) };
+
 let server;
 let base;
 let cookie = '';
 
 before(async () => {
-  const app = createApp(openDb(path.join(dir, 'test.db')));
+  const app = createApp(openDb(path.join(dir, 'test.db')), { mailer });
   await new Promise((resolve) => {
     server = app.listen(0, resolve);
   });
@@ -50,7 +53,18 @@ test('full review lifecycle: 3 rounds, final approval', async () => {
   assert.equal(r.status, 200);
 
   r = await api('POST', '/api/projects', { name: 'Acme site', client_name: 'Acme' });
+  assert.equal(r.status, 400, 'notification email is required');
+  r = await api('POST', '/api/projects', { name: 'Acme site', notify_emails: 'not-an-email' });
+  assert.equal(r.status, 400);
+  r = await api('POST', '/api/projects', {
+    name: 'Acme site',
+    client_name: 'Acme',
+    notify_emails: 'pm@studio.test, Dev@Studio.test',
+  });
+  assert.equal(r.data.project.notify_emails, 'pm@studio.test, dev@studio.test');
   const projectId = r.data.project.id;
+  const teamToken = r.data.project.team_token;
+  assert.ok(teamToken);
   const shareToken = r.data.project.share_token;
 
   const fd = new FormData();
@@ -65,6 +79,8 @@ test('full review lifecycle: 3 rounds, final approval', async () => {
   r = await api('GET', `/api/share/${shareToken}`, undefined, { agency: false });
   assert.equal(r.data.screens.length, 1);
   assert.equal(r.data.project.owner_id, undefined);
+  assert.equal(r.data.project.team_token, undefined, 'client never sees the team link');
+  assert.equal(r.data.project.notify_emails, undefined);
 
   for (let round = 1; round <= 3; round++) {
     const c = new FormData();
@@ -85,6 +101,19 @@ test('full review lifecycle: 3 rounds, final approval', async () => {
     assert.equal(r.status, 200);
     r = await api('POST', `/api/share/${shareToken}/submit`, { author_name: 'Jane' }, { agency: false });
     assert.equal(r.data.project.stage, 'revising');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(sent.length, round, 'one email per submitted round');
+    assert.equal(sent.at(-1).to, 'pm@studio.test, dev@studio.test');
+    assert.match(sent.at(-1).html, new RegExp(`/t/${teamToken}\\?round=${round}`));
+
+    // the team link (no sign-in) can mark comments done, and the client sees it
+    const commentId = r.data.comments.find((x) => x.round === round).id;
+    r = await api('PATCH', `/api/team/${teamToken}/comments/${commentId}`, { status: 'done' }, { agency: false });
+    assert.equal(r.status, 200);
+    r = await api('GET', `/api/share/${shareToken}`, undefined, { agency: false });
+    const updated = r.data.comments.find((x) => x.id === commentId);
+    assert.equal(updated.status, 'done');
+    assert.ok(updated.status_changed_at);
 
     // commenting is locked once submitted
     r = await api('POST', `/api/share/${shareToken}/comments`, c, { agency: false });
@@ -121,4 +150,6 @@ test('client cannot read another project or delete others comments', async () =>
   assert.equal(r.status, 404);
   r = await api('GET', '/api/projects/1', undefined, { agency: false });
   assert.equal(r.status, 401);
+  r = await api('GET', '/api/team/nope', undefined, { agency: false });
+  assert.equal(r.status, 404);
 });

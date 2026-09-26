@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 export const DATA_DIR = process.env.DATA_DIR || path.resolve('data');
 export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
@@ -114,7 +115,26 @@ export function openDb(file = path.join(DATA_DIR, 'portal.db')) {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+/** Additive migrations for databases created by earlier versions. */
+function migrate(db) {
+  const has = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+  if (!has('projects', 'notify_emails')) {
+    db.exec(`ALTER TABLE projects ADD COLUMN notify_emails TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!has('projects', 'team_token')) {
+    db.exec(`ALTER TABLE projects ADD COLUMN team_token TEXT`);
+  }
+  const missing = db.prepare('SELECT id FROM projects WHERE team_token IS NULL').all();
+  const setToken = db.prepare('UPDATE projects SET team_token = ? WHERE id = ?');
+  for (const { id } of missing) setToken.run(crypto.randomBytes(18).toString('base64url'), id);
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_team_token ON projects(team_token)');
+  if (!has('comments', 'status_changed_at')) {
+    db.exec(`ALTER TABLE comments ADD COLUMN status_changed_at TEXT`);
+  }
 }
 
 /** Run fn inside a transaction. */

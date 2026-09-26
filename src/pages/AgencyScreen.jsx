@@ -5,15 +5,18 @@ import ReviewViewer from '../components/ReviewViewer.jsx';
 import { versionLabel } from '../guidance.js';
 
 export default function AgencyScreen() {
-  const { projectId, screenId } = useParams();
+  // Reached either signed in (/projects/:projectId/…) or from a team email link (/t/:teamToken/…).
+  const { projectId, teamToken, screenId } = useParams();
+  const apiBase = teamToken ? `/api/team/${teamToken}` : `/api/projects/${projectId}`;
+  const linkBase = teamToken ? `/t/${teamToken}` : `/projects/${projectId}`;
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [versionId, setVersionId] = useState(null);
   const [error, setError] = useState('');
 
   const load = useCallback(
-    () => api('GET', `/api/projects/${projectId}`).then(setData, (e) => setError(e.message)),
-    [projectId],
+    () => api('GET', apiBase).then(setData, (e) => setError(e.message)),
+    [apiBase],
   );
   useEffect(() => {
     load();
@@ -35,16 +38,16 @@ export default function AgencyScreen() {
         screen={screen}
         version={version}
         comments={comments}
-        urls={fileUrls({ projectId })}
+        urls={fileUrls({ projectId, teamToken })}
         mode="agency"
         canComment={false}
-        onUpdate={async (c, patch) => setData(await api('PATCH', `/api/projects/${projectId}/comments/${c.id}`, patch))}
+        onUpdate={async (c, patch) => setData(await api('PATCH', `${apiBase}/comments/${c.id}`, patch))}
         toolbar={
           <>
-            <Link to={`/projects/${projectId}`} className="btn btn-sm btn-ghost">
+            <Link to={linkBase} className="btn btn-sm btn-ghost">
               ← {project.name}
             </Link>
-            <select value={screen.id} onChange={(e) => navigate(`/projects/${projectId}/screens/${e.target.value}`)}>
+            <select value={screen.id} onChange={(e) => navigate(`${linkBase}/screens/${e.target.value}`)}>
               {screens.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.title}

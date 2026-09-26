@@ -5,6 +5,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { UPLOAD_DIR, tx } from './db.js';
+import { createMailer } from './mailer.js';
+import { parseEmails, roundSubmittedEmail } from './emails.js';
 
 const SESSION_COOKIE = 'portal_session';
 const SESSION_DAYS = 30;
@@ -45,11 +47,20 @@ function storedUpload(file, allowed) {
   return path.basename(file.path);
 }
 
-export function createApp(db) {
+/** Validates the notify list; at least one address is required. */
+function requireEmails(input) {
+  const { emails, invalid } = parseEmails(input);
+  if (invalid.length) fail(400, `Not a valid email: ${invalid.join(', ')}`);
+  if (!emails.length) fail(400, 'Add at least one email to notify when the client submits a round');
+  return emails.join(', ');
+}
+
+export function createApp(db, { mailer = createMailer() } = {}) {
   const app = express();
   const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 150 * 1024 * 1024 } });
   const imageUpload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 15 * 1024 * 1024, files: 6 } });
 
+  if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? true : process.env.TRUST_PROXY);
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
 
@@ -58,6 +69,7 @@ export function createApp(db) {
   const q = {
     project: db.prepare('SELECT * FROM projects WHERE id = ?'),
     projectByToken: db.prepare('SELECT * FROM projects WHERE share_token = ?'),
+    projectByTeamToken: db.prepare('SELECT * FROM projects WHERE team_token = ?'),
     screens: db.prepare('SELECT * FROM screens WHERE project_id = ? ORDER BY position, id'),
     screen: db.prepare('SELECT * FROM screens WHERE id = ? AND project_id = ?'),
     versions: db.prepare(
@@ -113,6 +125,9 @@ export function createApp(db) {
   function publicProject(p, { forClient }) {
     const { owner_id, ...rest } = p;
     if (forClient) {
+      // Never leak the team link or the agency's notification list to the client.
+      delete rest.team_token;
+      delete rest.notify_emails;
       const owner = db.prepare('SELECT name FROM users WHERE id = ?').get(owner_id);
       rest.agency_name = owner?.name ?? '';
     }
@@ -159,6 +174,13 @@ export function createApp(db) {
   function ownedProject(req) {
     const p = q.project.get(Number(req.params.projectId));
     if (!p || p.owner_id !== req.user.id) fail(404, 'Project not found');
+    return p;
+  }
+
+  /** Loads the project behind a team (agency staff) link from a notification email. */
+  function teamProject(req) {
+    const p = q.projectByTeamToken.get(String(req.params.teamToken));
+    if (!p) fail(404, 'This team link is not valid');
     return p;
   }
 
@@ -213,7 +235,7 @@ export function createApp(db) {
         `SELECT p.*,
            (SELECT COUNT(*) FROM screens s WHERE s.project_id = p.id) AS screen_count,
            (SELECT COUNT(*) FROM comments c WHERE c.project_id = p.id AND c.round = p.current_round) AS round_comment_count,
-           (SELECT COUNT(*) FROM comments c WHERE c.project_id = p.id AND c.status = 'open') AS open_comment_count
+           (SELECT COUNT(*) FROM comments c WHERE c.project_id = p.id AND c.status = 'open' AND c.kind IN ('change', 'question')) AS open_comment_count
          FROM projects p WHERE p.owner_id = ? ORDER BY p.id DESC`,
       )
       .all(req.user.id);
@@ -223,11 +245,12 @@ export function createApp(db) {
   app.post('/api/projects', requireUser, (req, res) => {
     const name = cleanName(req.body.name);
     if (!name) fail(400, 'Give the project a name');
+    const notifyEmails = requireEmails(req.body.notify_emails);
     const maxRounds = Math.min(10, Math.max(1, Number(req.body.max_rounds) || 3));
     const { lastInsertRowid } = db
       .prepare(
-        `INSERT INTO projects (owner_id, name, client_name, welcome_message, share_token, max_rounds)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects (owner_id, name, client_name, welcome_message, share_token, team_token, max_rounds, notify_emails)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         req.user.id,
@@ -235,7 +258,9 @@ export function createApp(db) {
         cleanName(req.body.client_name),
         String(req.body.welcome_message ?? '').slice(0, 2000),
         token(18),
+        token(18),
         maxRounds,
+        notifyEmails,
       );
     const project = q.project.get(Number(lastInsertRowid));
     logEvent(project, req.user.name, 'created', `Project "${name}" created`);
@@ -259,10 +284,12 @@ export function createApp(db) {
           ? Math.min(10, Math.max(p.current_round, Number(req.body.max_rounds) || p.max_rounds))
           : p.max_rounds,
     };
+    next.notify_emails = req.body.notify_emails !== undefined ? requireEmails(req.body.notify_emails) : p.notify_emails;
     if (next.live_url && !/^https?:\/\//i.test(next.live_url)) next.live_url = `https://${next.live_url}`;
     db.prepare(
-      `UPDATE projects SET name = ?, client_name = ?, welcome_message = ?, live_url = ?, max_rounds = ? WHERE id = ?`,
-    ).run(next.name, next.client_name, next.welcome_message, next.live_url, next.max_rounds, p.id);
+      `UPDATE projects SET name = ?, client_name = ?, welcome_message = ?, live_url = ?, max_rounds = ?, notify_emails = ?
+       WHERE id = ?`,
+    ).run(next.name, next.client_name, next.welcome_message, next.live_url, next.max_rounds, next.notify_emails, p.id);
     if (next.live_url && next.live_url !== p.live_url) {
       logEvent(p, req.user.name, 'live_url', `Live site shared: ${next.live_url}`);
     }
@@ -394,14 +421,47 @@ export function createApp(db) {
 
   // ---------- agency: comments ----------
 
-  app.patch('/api/projects/:projectId/comments/:commentId', requireUser, (req, res) => {
-    const p = ownedProject(req);
+  /** Status/reply changes made by the agency, from the dashboard or a team link. */
+  function updateComment(p, req) {
     const c = q.comment.get(Number(req.params.commentId), p.id) ?? fail(404, 'Comment not found');
     const status = req.body.status !== undefined ? String(req.body.status) : c.status;
     if (!['open', 'done', 'wontfix'].includes(status)) fail(400, 'Unknown status');
     const reply = req.body.agency_reply !== undefined ? String(req.body.agency_reply).slice(0, 4000) : c.agency_reply;
-    db.prepare('UPDATE comments SET status = ?, agency_reply = ? WHERE id = ?').run(status, reply, c.id);
+    db.prepare(
+      `UPDATE comments SET status = ?, agency_reply = ?,
+         status_changed_at = CASE WHEN status = ? THEN status_changed_at ELSE datetime('now') END
+       WHERE id = ?`,
+    ).run(status, reply, status, c.id);
+  }
+
+  app.patch('/api/projects/:projectId/comments/:commentId', requireUser, (req, res) => {
+    const p = ownedProject(req);
+    updateComment(p, req);
     res.json(projectBundle(q.project.get(p.id), { forClient: false }));
+  });
+
+  // ---------- agency team link (from notification emails, no sign-in) ----------
+
+  app.get('/api/team/:teamToken', (req, res) => {
+    res.json(projectBundle(teamProject(req), { forClient: false }));
+  });
+
+  app.patch('/api/team/:teamToken/comments/:commentId', (req, res) => {
+    const p = teamProject(req);
+    updateComment(p, req);
+    res.json(projectBundle(q.project.get(p.id), { forClient: false }));
+  });
+
+  app.get('/api/team/:teamToken/versions/:versionId/file', (req, res) => {
+    const p = teamProject(req);
+    const v = q.version.get(Number(req.params.versionId), p.id) ?? fail(404, 'File not found');
+    sendStored(res, v.stored_name, 'application/pdf', v.original_name);
+  });
+
+  app.get('/api/team/:teamToken/attachments/:attachmentId', (req, res) => {
+    const p = teamProject(req);
+    const a = q.attachment.get(Number(req.params.attachmentId), p.id) ?? fail(404, 'File not found');
+    sendStored(res, a.stored_name, a.mime);
   });
 
   // ---------- files ----------
@@ -552,6 +612,7 @@ export function createApp(db) {
       `${name} submitted round ${p.current_round} of ${p.max_rounds} with ${count} comment${count === 1 ? '' : 's'}`,
     );
     res.json(projectBundle(q.project.get(p.id), { forClient: true }));
+    notifyRoundSubmitted(p, name, baseUrl(req));
   });
 
   app.post('/api/share/:token/approve', (req, res) => {
@@ -565,6 +626,33 @@ export function createApp(db) {
     logEvent(p, name, 'approved', `${name} approved the final design — development can start 🚀`);
     res.json(projectBundle(q.project.get(p.id), { forClient: true }));
   });
+
+  // ---------- notifications ----------
+
+  const baseUrl = (req) => (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+
+  /** Emails the agency's notify list after a round is submitted. Runs after the response; never throws. */
+  async function notifyRoundSubmitted(p, author, base) {
+    const to = parseEmails(p.notify_emails).emails;
+    if (!to.length) return;
+    try {
+      const bundle = projectBundle(p, { forClient: false });
+      const email = roundSubmittedEmail({
+        project: p,
+        round: p.current_round,
+        author,
+        screens: bundle.screens,
+        comments: bundle.comments.filter((c) => c.round === p.current_round),
+        teamUrl: `${base}/t/${p.team_token}?round=${p.current_round}`,
+        adminUrl: `${base}/projects/${p.id}`,
+      });
+      await mailer.send({ to: to.join(', '), ...email });
+      logEvent(p, 'Portal', 'email_sent', `Round ${p.current_round} summary emailed to ${to.join(', ')}`);
+    } catch (err) {
+      console.error('[mail] failed to send round notification', err);
+      logEvent(p, 'Portal', 'email_failed', `Couldn’t email the round ${p.current_round} summary: ${err.message}`);
+    }
+  }
 
   // ---------- errors ----------
 
