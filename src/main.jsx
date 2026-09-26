@@ -7,6 +7,8 @@ import Projects from './pages/Projects.jsx';
 import ProjectAdmin from './pages/ProjectAdmin.jsx';
 import AgencyScreen from './pages/AgencyScreen.jsx';
 import ClientPortal from './pages/ClientPortal.jsx';
+import '@fontsource-variable/dm-sans';
+import '@fontsource-variable/dm-sans/wght-italic.css';
 import './styles.css';
 
 createRoot(document.getElementById('root')).render(
