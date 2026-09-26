@@ -44,35 +44,35 @@ export function roundSubmittedEmail({ project, round, author, screens, comments,
     `Project dashboard (sign-in): ${adminUrl}`,
   ].join('\n');
 
-  const html = `<!doctype html><html><body style="margin:0;background:#f6f5fb;font-family:'DM Sans',Arial,sans-serif;color:#1d1b2c">
+  const html = `<!doctype html><html><body style="margin:0;background:#f4f6f9;font-family:'DM Sans',Arial,sans-serif;color:#0f1b2d">
 <div style="max-width:600px;margin:0 auto;padding:24px 16px">
-  <div style="background:#fff;border-radius:16px;padding:28px">
-    <div style="font-size:13px;color:#6b6880">${esc(project.client_name || 'Client')} · ${esc(project.name)}</div>
+  <div style="background:#fff;border-radius:10px;padding:28px;border:1px solid #e1e6ed">
+    <div style="font-size:13px;color:#5b6b80">${esc(project.client_name || 'Client')} · ${esc(project.name)}</div>
     <h1 style="font-size:22px;margin:6px 0 12px">📨 ${esc(author)} submitted round ${round} of ${project.max_rounds}</h1>
-    <p style="margin:0 0 16px;color:#4a4760">
+    <p style="margin:0 0 16px;color:#334155">
       <strong>${comments.length}</strong> comment${comments.length === 1 ? '' : 's'}:
       <strong>${changes.length}</strong> to action and <strong>${positives}</strong> positive.
       ${last ? '<br>This was the <strong>final revision round</strong>. Next: upload the final design and send it for approval.' : ''}
     </p>
-    <a href="${esc(teamUrl)}" style="display:inline-block;background:#6d5efc;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px">Review &amp; mark comments done →</a>
+    <a href="${esc(teamUrl)}" style="display:inline-block;background:#1b3a6b;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px">Review &amp; mark comments done →</a>
     ${groups
       .map(
         (g) => `
     <h2 style="font-size:16px;margin:24px 0 8px">${esc(g.screen.title)}</h2>
     ${g.items
       .map(
-        (c) => `<div style="border-left:3px solid ${POSITIVE.has(c.kind) ? '#e8457a' : c.kind === 'question' ? '#1c7ed6' : '#f08c00'};background:#faf9fe;border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:14px">
+        (c) => `<div style="border-left:3px solid ${POSITIVE.has(c.kind) ? '#0f766e' : c.kind === 'question' ? '#2f6fd6' : '#b45309'};background:#f7f9fc;border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:14px">
       <strong>${esc(KIND_LABEL[c.kind] ?? c.kind)}</strong>${c.body ? `<div style="white-space:pre-wrap;margin-top:2px">${esc(c.body)}</div>` : ''}
-      ${c.attachments?.length ? `<div style="font-size:12px;color:#6b6880;margin-top:2px">📎 ${c.attachments.length} screenshot${c.attachments.length === 1 ? '' : 's'}</div>` : ''}
-      <div style="font-size:12px;color:#6b6880;margin-top:2px">${esc(c.author_name)}</div>
+      ${c.attachments?.length ? `<div style="font-size:12px;color:#5b6b80;margin-top:2px">📎 ${c.attachments.length} screenshot${c.attachments.length === 1 ? '' : 's'}</div>` : ''}
+      <div style="font-size:12px;color:#5b6b80;margin-top:2px">${esc(c.author_name)}</div>
     </div>`,
       )
       .join('')}`,
       )
       .join('')}
-    <p style="font-size:12px;color:#6b6880;margin:24px 0 0">
+    <p style="font-size:12px;color:#5b6b80;margin:24px 0 0">
       Anyone with the review link above can update comment statuses. Don't forward it outside your team.<br>
-      Project dashboard: <a href="${esc(adminUrl)}" style="color:#6d5efc">${esc(adminUrl)}</a>
+      Project dashboard: <a href="${esc(adminUrl)}" style="color:#1b3a6b">${esc(adminUrl)}</a>
     </p>
   </div>
 </div></body></html>`;

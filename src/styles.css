@@ -1,25 +1,28 @@
 :root {
-  --bg: #f6f5fb;
+  --bg: #f4f6f9;
   --surface: #ffffff;
-  --surface-2: #f1effa;
-  --text: #1d1b2c;
-  --muted: #6b6880;
-  --border: #e4e1f0;
-  --primary: #6d5efc;
+  --surface-2: #f1f4f8;
+  --text: #0f1b2d;
+  --muted: #5b6b80;
+  --border: #e1e6ed;
+  --primary: #1b3a6b;
+  --primary-hover: #142d54;
   --primary-ink: #ffffff;
-  --primary-soft: #eeebff;
-  --positive: #e8457a;
-  --positive-soft: #ffe9f0;
-  --change: #f08c00;
-  --change-soft: #fff3e0;
-  --question: #1c7ed6;
-  --question-soft: #e7f2fd;
-  --success: #12a150;
-  --success-soft: #e3f8ec;
-  --danger: #d6336c;
-  --radius: 14px;
-  --shadow: 0 1px 2px rgba(30, 20, 80, 0.06), 0 8px 24px rgba(30, 20, 80, 0.08);
-  --shadow-lg: 0 20px 60px rgba(30, 20, 80, 0.25);
+  --primary-soft: #e9eff8;
+  --accent: #2f6fd6;
+  --positive: #0f766e;
+  --positive-soft: #e7f4f2;
+  --change: #b45309;
+  --change-soft: #fdf4e8;
+  --question: #2f6fd6;
+  --question-soft: #eaf1fd;
+  --success: #15803d;
+  --success-soft: #e9f6ee;
+  --danger: #b42318;
+  --danger-soft: #fdeceb;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(15, 27, 45, 0.05);
+  --shadow-lg: 0 12px 32px rgba(15, 27, 45, 0.16);
   font-family: 'DM Sans Variable', 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
   line-height: 1.5;
@@ -133,7 +136,7 @@ label {
 }
 .form-error {
   color: var(--danger);
-  background: #fff0f5;
+  background: var(--danger-soft);
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 0.9rem;
@@ -177,19 +180,17 @@ label {
   background: var(--primary);
   border-color: var(--primary);
   color: var(--primary-ink);
-  box-shadow: 0 4px 14px rgba(109, 94, 252, 0.3);
 }
 .btn-primary:hover {
-  background: #5b4be8;
+  background: var(--primary-hover);
 }
 .btn-success {
   background: var(--success);
   border-color: var(--success);
   color: #fff;
-  box-shadow: 0 4px 14px rgba(18, 161, 80, 0.3);
 }
 .btn-success:hover {
-  background: #0e8c45;
+  background: #116932;
 }
 .btn-ghost {
   background: transparent;
@@ -256,7 +257,7 @@ label {
 }
 .badge-amber {
   background: var(--change-soft);
-  color: #b35c00;
+  color: var(--change);
 }
 .badge-purple {
   background: var(--primary-soft);
@@ -285,13 +286,13 @@ label {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: radial-gradient(circle at 20% 10%, #e7e3ff, transparent 50%),
-    radial-gradient(circle at 80% 90%, #ffe3ec, transparent 50%), var(--bg);
+  background: var(--bg);
 }
 .auth-card {
+  border: 1px solid var(--border);
   width: min(420px, 100%);
   background: var(--surface);
-  border-radius: 20px;
+  border-radius: 12px;
   padding: 32px;
   box-shadow: var(--shadow);
   display: flex;
@@ -309,8 +310,9 @@ label {
   align-items: center;
   gap: 16px;
   padding: 12px 24px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: var(--primary);
+  color: #fff;
+  border-bottom: 1px solid var(--primary-hover);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -364,6 +366,7 @@ label {
   gap: 16px;
 }
 .project-card {
+  border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius);
   padding: 18px;
@@ -409,7 +412,7 @@ label {
   background: var(--primary);
 }
 .round-dots span.current {
-  background: repeating-linear-gradient(90deg, var(--primary) 0 4px, var(--primary-soft) 4px 8px);
+  background: var(--accent);
 }
 .round-dots span.final {
   width: auto;
@@ -453,13 +456,14 @@ label {
   color: var(--text);
 }
 .stepper li.current .step-dot {
-  background: repeating-linear-gradient(90deg, var(--primary) 0 6px, var(--primary-soft) 6px 12px);
+  background: var(--accent);
 }
 .stepper li.current {
   color: var(--primary);
 }
 
 .share-box {
+  border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius);
   padding: 16px 18px;
@@ -483,6 +487,7 @@ label {
   font-size: 0.85rem;
 }
 .next-step {
+  border: 1px solid var(--border);
   display: flex;
   gap: 16px;
   background: var(--surface);
@@ -556,6 +561,7 @@ label {
   font-size: 2rem;
 }
 .screen-row {
+  border: 1px solid var(--border);
   display: flex;
   gap: 12px;
   align-items: center;
@@ -575,6 +581,7 @@ label {
   font-size: 1.02rem;
 }
 .feedback-group {
+  border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius);
   padding: 16px;
@@ -591,6 +598,7 @@ label {
   gap: 10px;
 }
 .timeline {
+  border: 1px solid var(--border);
   list-style: none;
   padding: 0;
   margin: 0;
@@ -770,7 +778,7 @@ label {
   flex: 1;
   overflow: auto;
   padding: 24px;
-  background: #e9e7f2;
+  background: #e8ecf1;
 }
 .canvas-scroll.can-comment canvas {
   cursor: crosshair;
@@ -822,7 +830,7 @@ label {
   font-weight: 800;
   font-size: 0.8rem;
   background: var(--change);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 6px rgba(15, 27, 45, 0.25);
   border: 2px solid #fff;
   cursor: pointer;
   transition: transform 0.15s;
@@ -888,10 +896,10 @@ label {
 @keyframes pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(109, 94, 252, 0.5);
+    box-shadow: 0 0 0 0 rgba(27, 58, 107, 0.45);
   }
   50% {
-    box-shadow: 0 0 0 10px rgba(109, 94, 252, 0);
+    box-shadow: 0 0 0 10px rgba(27, 58, 107, 0);
   }
 }
 
@@ -929,21 +937,21 @@ label {
 }
 .preset.positive {
   background: var(--positive-soft);
-  border-color: #ffc9da;
+  border-color: #cfe7e3;
 }
 .preset.positive.active {
   border-color: var(--positive);
-  box-shadow: 0 0 0 3px #ffd6e3;
+  box-shadow: 0 0 0 2px #cfe7e3;
 }
 .preset.change.active {
   border-color: var(--change);
   background: var(--change-soft);
-  box-shadow: 0 0 0 3px #ffe3bf;
+  box-shadow: 0 0 0 2px #f6dfc2;
 }
 .preset.question.active {
   border-color: var(--question);
   background: var(--question-soft);
-  box-shadow: 0 0 0 3px #cfe5fb;
+  box-shadow: 0 0 0 2px #cfddf7;
 }
 .preset-emoji {
   font-size: 1.05rem;
@@ -1059,7 +1067,7 @@ label {
   max-width: calc(100% - 32px);
 }
 .coach-hint .link-btn {
-  color: #c9c2ff;
+  color: #9fbbe8;
   white-space: nowrap;
 }
 @keyframes drop {
@@ -1077,13 +1085,13 @@ label {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: radial-gradient(circle at 15% 10%, #e7e3ff, transparent 45%),
-    radial-gradient(circle at 85% 85%, #ffe3ec, transparent 45%), var(--bg);
+  background: var(--bg);
 }
 .big-card {
+  border: 1px solid var(--border);
   width: min(520px, 100%);
   background: var(--surface);
-  border-radius: 24px;
+  border-radius: 14px;
   padding: 36px 32px;
   box-shadow: var(--shadow);
   text-align: center;
@@ -1219,7 +1227,7 @@ label {
 }
 .progress div {
   height: 100%;
-  background: linear-gradient(90deg, var(--primary), var(--positive));
+  background: var(--primary);
   border-radius: 99px;
   transition: width 0.4s;
 }
@@ -1232,6 +1240,7 @@ label {
   gap: 8px;
 }
 .check-item {
+  border: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 14px;
@@ -1268,6 +1277,7 @@ label {
 }
 .focus-card,
 .how-card {
+  border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius);
   padding: 14px 16px;
@@ -1318,7 +1328,7 @@ label {
 .banner {
   display: flex;
   gap: 18px;
-  border-radius: 20px;
+  border-radius: 12px;
   padding: 24px;
   align-items: flex-start;
 }
@@ -1326,16 +1336,21 @@ label {
   margin: 0;
 }
 .banner-green {
-  background: linear-gradient(135deg, #e3f8ec, #e7f4ff);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--success);
 }
 .banner-purple {
-  background: linear-gradient(135deg, #eeebff, #ffe9f0);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
 }
 .banner-emoji {
   font-size: 2.6rem;
   line-height: 1;
 }
 .log-round {
+  border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -1386,14 +1401,15 @@ label {
 .celebrate-card {
   width: 100%;
   max-width: 680px;
-  background: linear-gradient(135deg, #eeebff, #ffe9f0 60%, #e3f8ec);
+  background: var(--surface);
+  border-top: 4px solid var(--success);
 }
 
 /* ---------- modal ---------- */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(20, 16, 40, 0.45);
+  background: rgba(15, 27, 45, 0.45);
   display: grid;
   place-items: center;
   padding: 16px;
@@ -1403,7 +1419,7 @@ label {
 .modal {
   position: relative;
   background: var(--surface);
-  border-radius: 20px;
+  border-radius: 12px;
   padding: 28px;
   width: min(520px, 100%);
   max-height: calc(100vh - 32px);
@@ -1478,7 +1494,7 @@ label {
 }
 .submit-summary div {
   background: var(--surface-2);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 12px 8px;
   text-align: center;
   display: flex;
@@ -1594,6 +1610,7 @@ label {
 }
 .done-progress,
 .round-progress {
+  border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius);
   padding: 14px 16px;
@@ -1611,7 +1628,7 @@ label {
 }
 .done-progress .progress div,
 .round-progress .progress div {
-  background: linear-gradient(90deg, var(--success), #2ec4b6);
+  background: var(--success);
 }
 .mini-progress {
   width: 70px;
@@ -1627,7 +1644,7 @@ label {
   background: var(--success);
 }
 .status-pending {
-  color: #b35c00;
+  color: var(--change);
 }
 .status-wontfix {
   color: var(--question);
@@ -1637,7 +1654,7 @@ label {
   color: var(--muted);
 }
 .comment-card.handled {
-  background: #fbfefc;
+  background: #fafcfb;
 }
 
 /* ---------- email settings ---------- */
@@ -1679,6 +1696,7 @@ label {
   font-size: 1.6rem;
 }
 .help-box {
+  border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius);
   padding: 12px 16px;
@@ -1709,4 +1727,21 @@ label {
   .grid-2 {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------- corporate header ---------- */
+.app-header .brand,
+.app-header .header-crumbs,
+.app-header .header-crumbs a,
+.app-header .header-user,
+.app-header .header-user .muted,
+.app-header .btn-ghost {
+  color: #fff;
+}
+.app-header .header-crumbs,
+.app-header .header-user .muted {
+  color: #c3d0e4;
+}
+.app-header .btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
