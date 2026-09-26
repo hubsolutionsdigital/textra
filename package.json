@@ -1,0 +1,31 @@
+{
+  "name": "textra-review-portal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Guided client feedback portal for UI/UX PDF reviews with revision rounds",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"node --disable-warning=ExperimentalWarning --watch server/index.js\" \"vite\"",
+    "build": "vite build",
+    "start": "NODE_ENV=production node --disable-warning=ExperimentalWarning server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test server/*.test.js"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
+    "multer": "^2.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "canvas-confetti": "^1.9.4",
+    "concurrently": "^10.0.5",
+    "pdfjs-dist": "^6.3.289",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4",
+    "vite": "^8.3.1"
+  }
+}
