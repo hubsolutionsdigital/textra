@@ -11,9 +11,11 @@ export default function Projects() {
   const [projects, setProjects] = useState(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [mail, setMail] = useState(null);
 
   useEffect(() => {
     api('GET', '/api/projects').then((d) => setProjects(d.projects), (e) => setError(e.message));
+    api('GET', '/api/mail-settings').then(setMail, () => {});
   }, []);
 
   return (
@@ -30,6 +32,18 @@ export default function Projects() {
           </button>
         </div>
         {error && <div className="form-error">{error}</div>}
+        {mail && !mail.settings && !mail.server_default && (
+          <Link to="/settings/email" className="next-step highlight setup-banner">
+            <div className="next-emoji">✉️</div>
+            <div className="grow">
+              <strong>Connect Zoho Mail or Gmail to get notified</strong>
+              <p className="muted">
+                You’ll get an email each time a client submits a round of feedback. It takes about 2 minutes.
+              </p>
+            </div>
+            <span className="btn btn-primary">Set up email →</span>
+          </Link>
+        )}
         {projects && projects.length === 0 && (
           <div className="empty-state">
             <div className="empty-emoji">🎨</div>

@@ -104,6 +104,21 @@ CREATE TABLE IF NOT EXISTS events (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Per-agency outgoing email account (Zoho Mail, Gmail or any SMTP). Password is encrypted.
+CREATE TABLE IF NOT EXISTS mail_settings (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  region TEXT NOT NULL DEFAULT 'com',
+  zoho_account TEXT NOT NULL DEFAULT 'business',
+  host TEXT NOT NULL DEFAULT '',
+  port INTEGER NOT NULL DEFAULT 465,
+  username TEXT NOT NULL,
+  password_enc TEXT NOT NULL,
+  from_name TEXT NOT NULL DEFAULT '',
+  verified_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_comments_screen ON comments(screen_id);
 CREATE INDEX IF NOT EXISTS idx_versions_screen ON versions(screen_id);
 CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id);

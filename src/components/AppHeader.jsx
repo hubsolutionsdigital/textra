@@ -12,6 +12,9 @@ export default function AppHeader({ children }) {
       </Link>
       <div className="header-crumbs">{children}</div>
       <div className="header-user">
+        <Link to="/settings/email" className="btn btn-ghost btn-sm hide-sm">
+          ✉️ Email settings
+        </Link>
         <span className="muted">{user?.name}</span>
         <button
           className="btn btn-ghost btn-sm"

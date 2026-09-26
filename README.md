@@ -67,12 +67,26 @@ Environment variables:
 | `APP_URL` | request host | Public URL used for links in emails, e.g. `https://review.yourstudio.com`. **Set this in production.** |
 | `SMTP_URL` | unset | SMTP connection, e.g. `smtps://user:pass@smtp.example.com`. Or use `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (`SMTP_SECURE=true` for implicit TLS). |
 | `MAIL_FROM` | `Design Review Portal <no-reply@localhost>` | Sender address for notification emails. |
+| `SECRET_KEY` | auto-generated file | Key used to encrypt saved mailbox passwords. If you set it, keep it stable. |
 | `TRUST_PROXY` | unset | Express `trust proxy` setting when running behind a reverse proxy. |
 | `INSECURE_COOKIES` | unset | Set to `1` to allow login over plain HTTP when `NODE_ENV=production` (e.g. local testing). |
 
 Run the API tests with `npm test`.
 
-Without SMTP settings, emails aren't sent. They're saved as `.eml` files in `DATA_DIR/outbox/` so you can open and
+### Sending email (Zoho Mail or Gmail)
+
+Sign in, then open **✉️ Email settings** (top right). Pick **Zoho Mail**, **Gmail / Google Workspace** or
+**Other (SMTP)**, and enter the address and app password. The portal logs in and sends you a test email before
+saving, so you know right away if it works. You can switch accounts anytime. Passwords are encrypted at rest with
+`SECRET_KEY`, or an auto-generated `DATA_DIR/secret.key` if that isn't set.
+
+- **Zoho Mail:** choose the data centre you log in at (mail.zoho.com / .eu / .in / .com.au / .jp / zohocloud.ca /
+  .sa), and *Business* for your own domain (uses `smtppro.zoho.*`) or *Personal* for @zoho.com (uses `smtp.zoho.*`).
+  With two-factor on, create an app password under accounts.zoho.com → Security → App Passwords.
+- **Gmail:** turn on 2-Step Verification, then create an app password at myaccount.google.com/apppasswords.
+
+The `SMTP_*` environment variables are an optional server-wide fallback, used when an agency hasn't connected a mailbox.
+When neither is set, emails aren't sent. They're saved as `.eml` files in `DATA_DIR/outbox/` so you can open and
 check them. The project's activity log records every email sent, or the error if sending failed.
 
 ## Notes and limits

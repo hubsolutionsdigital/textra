@@ -5,7 +5,14 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { UPLOAD_DIR, tx } from './db.js';
-import { createMailer } from './mailer.js';
+import {
+  createMailer,
+  decryptSecret,
+  encryptSecret,
+  explainMailError,
+  smtpOptions,
+  ZOHO_REGIONS,
+} from './mailer.js';
 import { parseEmails, roundSubmittedEmail } from './emails.js';
 
 const SESSION_COOKIE = 'portal_session';
@@ -627,6 +634,112 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     res.json(projectBundle(q.project.get(p.id), { forClient: true }));
   });
 
+  // ---------- agency email account (Zoho Mail / Gmail / SMTP) ----------
+
+  const PROVIDERS = ['zoho', 'gmail', 'smtp'];
+
+  /** Saved settings for a user with the password decrypted, or null. */
+  function mailSettingsFor(userId) {
+    const row = db.prepare('SELECT * FROM mail_settings WHERE user_id = ?').get(userId);
+    if (!row) return null;
+    try {
+      return { ...row, password: decryptSecret(row.password_enc) };
+    } catch {
+      return null; // key changed; treat as not configured
+    }
+  }
+
+  const publicMailSettings = (row) =>
+    row && {
+      provider: row.provider,
+      region: row.region,
+      zoho_account: row.zoho_account,
+      host: row.host,
+      port: row.port,
+      username: row.username,
+      from_name: row.from_name,
+      verified_at: row.verified_at,
+      has_password: true,
+      server: smtpOptions(row).host,
+    };
+
+  /** Validates a settings form; a blank password keeps the saved one. */
+  function readMailForm(req) {
+    const b = req.body ?? {};
+    const provider = PROVIDERS.includes(b.provider) ? b.provider : fail(400, 'Choose Zoho Mail, Gmail or another provider');
+    const username = String(b.username ?? '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username)) fail(400, 'Enter the email address you send from');
+    const saved = mailSettingsFor(req.user.id);
+    let password = String(b.password ?? '');
+    // Google shows app passwords in groups of four ("abcd efgh ijkl mnop"); the spaces aren't part of it.
+    if (provider === 'gmail') password = password.replace(/\s+/g, '');
+    password ||= saved?.password;
+    if (!password) fail(400, provider === 'smtp' ? 'Enter the password' : 'Enter the app password');
+    const form = {
+      provider,
+      region: ZOHO_REGIONS[b.region] ? b.region : 'com',
+      zoho_account: b.zoho_account === 'personal' ? 'personal' : 'business',
+      host: String(b.host ?? '').trim(),
+      port: Number(b.port) || 465,
+      username,
+      password,
+      from_name: cleanName(b.from_name) || req.user.name,
+    };
+    if (provider === 'smtp' && !/^[\w.-]+$/.test(form.host)) fail(400, 'Enter the SMTP server, e.g. smtp.example.com');
+    return form;
+  }
+
+  app.get('/api/mail-settings', requireUser, (req, res) => {
+    res.json({
+      settings: publicMailSettings(mailSettingsFor(req.user.id)),
+      zoho_regions: Object.entries(ZOHO_REGIONS).map(([value, r]) => ({ value, label: r.label })),
+      server_default: mailer.envConfigured,
+    });
+  });
+
+  /** Logs in to the mail server and sends a test email to the signed-in user before saving. */
+  app.put('/api/mail-settings', requireUser, async (req, res) => {
+    const form = readMailForm(req);
+    try {
+      await mailer.verify(form);
+      await mailer.send(
+        {
+          to: req.user.email,
+          subject: 'Your review portal can send email ✅',
+          text: `This is a test from your Design Review Portal. Round notifications will be sent from ${form.username}.`,
+          html: `<p>This is a test from your Design Review Portal. ✅</p><p>Round notifications will be sent from <strong>${form.username}</strong>.</p>`,
+        },
+        { settings: form },
+      );
+    } catch (err) {
+      fail(400, explainMailError(err, form.provider));
+    }
+    db.prepare(
+      `INSERT INTO mail_settings (user_id, provider, region, zoho_account, host, port, username, password_enc, from_name, verified_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+       ON CONFLICT(user_id) DO UPDATE SET provider = excluded.provider, region = excluded.region,
+         zoho_account = excluded.zoho_account, host = excluded.host, port = excluded.port,
+         username = excluded.username, password_enc = excluded.password_enc, from_name = excluded.from_name,
+         verified_at = excluded.verified_at, updated_at = excluded.updated_at`,
+    ).run(
+      req.user.id,
+      form.provider,
+      form.region,
+      form.zoho_account,
+      form.host,
+      form.port,
+      form.username,
+      encryptSecret(form.password),
+      form.from_name,
+    );
+    res.json({ settings: publicMailSettings(mailSettingsFor(req.user.id)), test_sent_to: req.user.email });
+  });
+
+  app.delete('/api/mail-settings', requireUser, (req, res) => {
+    db.prepare('DELETE FROM mail_settings WHERE user_id = ?').run(req.user.id);
+    res.json({ settings: null });
+  });
+
   // ---------- notifications ----------
 
   const baseUrl = (req) => (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
@@ -646,11 +759,25 @@ export function createApp(db, { mailer = createMailer() } = {}) {
         teamUrl: `${base}/t/${p.team_token}?round=${p.current_round}`,
         adminUrl: `${base}/projects/${p.id}`,
       });
-      await mailer.send({ to: to.join(', '), ...email });
-      logEvent(p, 'Portal', 'email_sent', `Round ${p.current_round} summary emailed to ${to.join(', ')}`);
+      const settings = mailSettingsFor(p.owner_id);
+      const info = await mailer.send({ to: to.join(', '), ...email }, { settings });
+      logEvent(
+        p,
+        'Portal',
+        info?.outbox ? 'email_outbox' : 'email_sent',
+        info?.outbox
+          ? `Round ${p.current_round} summary not sent: no email account set up (saved to the outbox instead)`
+          : `Round ${p.current_round} summary emailed to ${to.join(', ')}${settings ? ` from ${settings.username}` : ''}`,
+      );
     } catch (err) {
       console.error('[mail] failed to send round notification', err);
-      logEvent(p, 'Portal', 'email_failed', `Couldn’t email the round ${p.current_round} summary: ${err.message}`);
+      const settings = mailSettingsFor(p.owner_id);
+      logEvent(
+        p,
+        'Portal',
+        'email_failed',
+        `Couldn’t email the round ${p.current_round} summary: ${explainMailError(err, settings?.provider)}`,
+      );
     }
   }
 
