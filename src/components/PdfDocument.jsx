@@ -21,11 +21,18 @@ export default function PdfDocument({ url, zoom = 1, renderOverlay, onPageClick 
   useEffect(() => {
     setDoc(null);
     setError(null);
+    // A cancelled load rejects after the next one has started; ignore anything
+    // that settles once this effect has been cleaned up.
+    let cancelled = false;
     const task = pdfjs.getDocument({ url, withCredentials: true });
-    task.promise.then(setDoc, (err) => {
-      if (err?.name !== 'AbortException') setError('We couldn’t open this PDF.');
-    });
-    return () => task.destroy();
+    task.promise.then(
+      (d) => !cancelled && setDoc(d),
+      () => !cancelled && setError('We couldn’t open this PDF.'),
+    );
+    return () => {
+      cancelled = true;
+      task.destroy();
+    };
   }, [url]);
 
   useEffect(() => {
@@ -40,7 +47,7 @@ export default function PdfDocument({ url, zoom = 1, renderOverlay, onPageClick 
 
   return (
     <div className="pdf-doc" ref={wrapRef}>
-      {error && <div className="pdf-status">{error}</div>}
+      {error && !doc && <div className="pdf-status">{error}</div>}
       {!doc && !error && <div className="pdf-status">Loading design…</div>}
       {doc &&
         width > 0 &&

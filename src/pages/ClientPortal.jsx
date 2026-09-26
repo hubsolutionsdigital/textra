@@ -98,6 +98,8 @@ export default function ClientPortal() {
         }}
         onSubmit={ctx.openSubmit}
         commentCount={data.comments.filter((c) => c.round === project.current_round).length}
+        reviewedCount={data.screens.filter((s) => screenStatus(data, s, name).reviewed).length}
+        totalScreens={data.screens.length}
       />
       <Routes>
         <Route index element={<Overview {...ctx} />} />
@@ -192,7 +194,8 @@ function NameGate({ project, onSubmit }) {
   );
 }
 
-function ClientHeader({ project, name, onChangeName, onSubmit, commentCount }) {
+function ClientHeader({ project, name, onChangeName, onSubmit, commentCount, reviewedCount, totalScreens }) {
+  const ready = totalScreens > 0 && reviewedCount === totalScreens;
   const stageLabel = {
     review: `Round ${project.current_round} of ${project.max_rounds}`,
     revising: `Round ${project.current_round} submitted`,
@@ -214,9 +217,20 @@ function ClientHeader({ project, name, onChangeName, onSubmit, commentCount }) {
         </button>
       </span>
       {project.stage === 'review' && (
-        <button className="btn btn-primary" onClick={onSubmit}>
+        <button
+          className="btn btn-primary"
+          onClick={onSubmit}
+          disabled={!ready}
+          title={ready ? undefined : 'Review every page first (click “Done with this page” on each one)'}
+        >
           Submit round {project.current_round}
-          {commentCount > 0 && <span className="btn-count">{commentCount}</span>}
+          {ready ? (
+            commentCount > 0 && <span className="btn-count">{commentCount}</span>
+          ) : (
+            <span className="btn-count">
+              {reviewedCount}/{totalScreens} pages
+            </span>
+          )}
         </button>
       )}
     </header>
@@ -499,7 +513,10 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
 
   const reviewing = project.stage === 'review';
   const { reviewed } = screenStatus(data, screen, name);
-  const nextScreen = screens.slice(index + 1).find((s) => !screenStatus(data, s, name).reviewed) ?? screens[index + 1];
+  // The next page still to review, looking forward first and then wrapping around.
+  const nextScreen = [...screens.slice(index + 1), ...screens.slice(0, index)].find(
+    (s) => !screenStatus(data, s, name).reviewed,
+  );
 
   const dismissHint = () => {
     storage.set(hintKey, '1');
@@ -724,7 +741,16 @@ function SubmitModal({ data, name, call, reason, onClose, onSubmitted }) {
       </div>
       {unreviewed.length > 0 && (
         <div className="warn-box">
-          You haven’t marked these as reviewed yet: {unreviewed.map((s) => s.title).join(', ')}. You can still submit.
+          Please review every page before submitting. Still to go:{' '}
+          {unreviewed.map((s, i) => (
+            <span key={s.id}>
+              {i > 0 && ', '}
+              <Link to={`/r/${project.share_token}/p/${s.id}`} onClick={onClose}>
+                {s.title}
+              </Link>
+            </span>
+          ))}
+          . Open each one and click <strong>Done with this page</strong>.
         </div>
       )}
       <p className="muted small">
@@ -740,7 +766,7 @@ function SubmitModal({ data, name, call, reason, onClose, onSubmitted }) {
         </button>
         <button
           className="btn btn-primary"
-          disabled={busy}
+          disabled={busy || unreviewed.length > 0}
           onClick={async () => {
             setBusy(true);
             try {

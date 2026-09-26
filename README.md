@@ -24,6 +24,7 @@ approval and a "development has started" hand-off.
 - Click anywhere on the design to comment. The comment popup leads with positive presets
   (❤️ Love it · 👍 Like this · 🎉 This is great) before ✏️ *Suggest a change* / ❓ *Ask a question*.
   Screenshots can be pasted with Ctrl/⌘+V or attached.
+- **Submit round** stays greyed out (showing e.g. "1/3 pages") until the reviewer has clicked **Done with this page** on every page. The server enforces this too.
 - After 10 minutes of review time with unsent comments, the portal asks whether they'd like to submit this batch.
 - Submitting locks the round with a confetti celebration. When the next round opens, the client uses the same link.
   Earlier comments show as faint dots on the design, and hovering one reveals what was said, plus the agency's status and reply.

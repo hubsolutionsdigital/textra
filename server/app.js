@@ -531,6 +531,16 @@ export function createApp(db) {
     const p = sharedProject(req);
     if (p.stage !== 'review') fail(409, 'This round has already been submitted');
     const name = cleanName(req.body.author_name) || fail(400, 'Please enter your name first');
+    const unreviewed = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM screens s
+         WHERE s.project_id = ?
+           AND EXISTS (SELECT 1 FROM versions v WHERE v.screen_id = s.id)
+           AND NOT EXISTS (SELECT 1 FROM screen_reviews r
+                           WHERE r.screen_id = s.id AND r.round = ? AND r.reviewer_name = ?)`,
+      )
+      .get(p.id, p.current_round, name).n;
+    if (unreviewed > 0) fail(409, 'Please review every page before submitting this round');
     const count = db
       .prepare('SELECT COUNT(*) AS n FROM comments WHERE project_id = ? AND round = ?')
       .get(p.id, p.current_round).n;

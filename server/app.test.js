@@ -80,6 +80,10 @@ test('full review lifecycle: 3 rounds, final approval', async () => {
     assert.equal(r.data.comments.filter((x) => x.round === round).length, 1);
 
     r = await api('POST', `/api/share/${shareToken}/submit`, { author_name: 'Jane' }, { agency: false });
+    assert.equal(r.status, 409, 'cannot submit before reviewing every page');
+    r = await api('POST', `/api/share/${shareToken}/screens/${screen.id}/reviewed`, { author_name: 'Jane' }, { agency: false });
+    assert.equal(r.status, 200);
+    r = await api('POST', `/api/share/${shareToken}/submit`, { author_name: 'Jane' }, { agency: false });
     assert.equal(r.data.project.stage, 'revising');
 
     // commenting is locked once submitted
