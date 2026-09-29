@@ -73,6 +73,16 @@ Environment variables:
 
 Run the API tests with `npm test`.
 
+**Forgot a password?** In the project folder, run:
+
+```bash
+npm run reset-password -- you@studio.com              # prints a new random password
+npm run reset-password -- you@studio.com NewPass123   # or set one yourself
+npm run reset-password                                # lists all accounts
+```
+
+This signs the account out everywhere, and it works while the portal is running.
+
 ### Sending email (Zoho Mail or Gmail)
 
 Sign in, then open **✉️ Email settings** (top right). Pick **Zoho Mail**, **Gmail / Google Workspace** or

@@ -55,7 +55,17 @@ export default function Login() {
             Password
             <input type="password" value={form.password} onChange={set('password')} required minLength={8} />
           </label>
-          {error && <div className="form-error">{error}</div>}
+          {error && (
+            <div className="form-error">
+              {error}
+              {mode === 'login' && (
+                <div className="small">
+                  Forgot your password? Whoever runs the portal can reset it with{' '}
+                  <code>npm run reset-password -- your@email.com</code>
+                </div>
+              )}
+            </div>
+          )}
           <button className="btn btn-primary btn-lg" disabled={busy}>
             {mode === 'login' ? 'Sign in' : 'Create account'}
           </button>

@@ -11,7 +11,8 @@
     "dev": "concurrently -k -n api,web \"node --disable-warning=ExperimentalWarning --watch server/index.js\" \"vite\"",
     "build": "vite build",
     "start": "NODE_ENV=production node --disable-warning=ExperimentalWarning server/index.js",
-    "test": "node --disable-warning=ExperimentalWarning --test server/*.test.js"
+    "test": "node --disable-warning=ExperimentalWarning --test server/*.test.js",
+    "reset-password": "node --disable-warning=ExperimentalWarning server/reset-password.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
