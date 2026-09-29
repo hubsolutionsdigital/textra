@@ -158,7 +158,17 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     );
   }
 
-  function startSession(res, userId) {
+  /**
+   * Secure cookies only over HTTPS. Safari (unlike Chrome) refuses to store a Secure cookie on
+   * http://localhost, which would make sign-in silently fail when running the production build locally.
+   */
+  const useSecureCookie = (req) =>
+    req.secure ||
+    (process.env.NODE_ENV === 'production' &&
+      process.env.INSECURE_COOKIES !== '1' &&
+      !['localhost', '127.0.0.1', '::1'].includes(req.hostname));
+
+  function startSession(req, res, userId) {
     const t = token(32);
     db.prepare(
       `INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+${SESSION_DAYS} days'))`,
@@ -166,7 +176,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     res.cookie(SESSION_COOKIE, t, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production' && process.env.INSECURE_COOKIES !== '1',
+      secure: useSecureCookie(req),
       maxAge: SESSION_DAYS * 86400_000,
     });
   }
@@ -209,7 +219,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     const { lastInsertRowid } = db
       .prepare('INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)')
       .run(email, name, hashPassword(password));
-    startSession(res, Number(lastInsertRowid));
+    startSession(req, res, Number(lastInsertRowid));
     res.json({ user: { id: Number(lastInsertRowid), email, name } });
   });
 
@@ -219,7 +229,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     if (!user || !verifyPassword(String(req.body.password ?? ''), user.password_hash)) {
       fail(401, 'Wrong email or password');
     }
-    startSession(res, user.id);
+    startSession(req, res, user.id);
     res.json({ user: { id: user.id, email: user.email, name: user.name } });
   });
 

@@ -35,10 +35,14 @@ export default function Composer({ onSubmit, onCancel, flip }) {
   };
 
   const onPaste = (e) => {
-    const files = [...(e.clipboardData?.items ?? [])]
-      .filter((it) => it.kind === 'file')
-      .map((it) => it.getAsFile())
-      .filter(Boolean);
+    // Safari puts pasted images in clipboardData.files; Chrome/Firefox in .items.
+    const fromFiles = [...(e.clipboardData?.files ?? [])];
+    const files = fromFiles.length
+      ? fromFiles
+      : [...(e.clipboardData?.items ?? [])]
+          .filter((it) => it.kind === 'file')
+          .map((it) => it.getAsFile())
+          .filter(Boolean);
     if (addFiles(files)) e.preventDefault();
   };
 
