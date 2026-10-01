@@ -18,7 +18,20 @@ export const deviceLabel = (id) => DEVICES.find((d) => d.id === id)?.label;
  * renderPopover({ kind: 'pin' | 'draft', id, left, top, flip }) returns the popover element.
  */
 const HtmlStage = forwardRef(function HtmlStage(
-  { src, device, pins, commentMode, onPageClick, onHiddenChange, onPinClick, activeId, draftAnchor, renderPopover, onDismiss },
+  {
+    src,
+    device,
+    pins,
+    commentMode,
+    onPageClick,
+    onHiddenChange,
+    onPinClick,
+    activeId,
+    draftAnchor,
+    renderPopover,
+    onDismiss,
+    onPageError,
+  },
   ref,
 ) {
   const wrapRef = useRef(null);
@@ -71,6 +84,7 @@ const HtmlStage = forwardRef(function HtmlStage(
         setAnchorPos({ x: m.x, y: m.y });
         onPinClick?.(m.id);
       } else if (m.type === 'hidden') onHiddenChange?.(m.ids);
+      else if (m.type === 'page-error') onPageError?.(m);
       else if (m.type === 'scroll') {
         setHover(null);
         onDismiss?.();

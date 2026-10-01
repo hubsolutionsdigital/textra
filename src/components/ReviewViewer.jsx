@@ -41,6 +41,7 @@ export default function ReviewViewer({
   const [commentMode, setCommentMode] = useState(canComment);
   const [htmlDraft, setHtmlDraft] = useState(null);
   const [hiddenIds, setHiddenIds] = useState([]);
+  const [pageError, setPageError] = useState(null);
 
   const { live, past, numbers } = useMemo(() => {
     const mine = comments.filter((c) => c.screen_id === screen.id);
@@ -286,6 +287,15 @@ export default function ReviewViewer({
 
       <div className="viewer-body">
         <div className={`canvas-scroll ${canComment ? 'can-comment' : ''} ${isHtml ? 'is-html' : ''}`}>
+          {isHtml && pageError && mode === 'agency' && (
+            <div className="page-error" role="status">
+              ⚠️ This prototype hit a script error in the portal: <code>{pageError.message}</code>
+              {pageError.source && <> ({pageError.source})</>}. Some animations may not run as designed.
+              <button className="link-btn" onClick={() => setPageError(null)}>
+                Dismiss
+              </button>
+            </div>
+          )}
           {isHtml ? (
             <HtmlStage
               ref={stageRef}
@@ -305,6 +315,7 @@ export default function ReviewViewer({
               }}
               onHiddenChange={setHiddenIds}
               onDismiss={() => setActiveId(null)}
+              onPageError={(err) => setPageError((cur) => cur ?? err)}
               renderPopover={renderHtmlPopover}
             />
           ) : version ? (

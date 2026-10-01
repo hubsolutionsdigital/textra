@@ -6,6 +6,73 @@
  *  - in "comment" mode, turns clicks into comment positions instead of page interactions
  */
 (function () {
+  // ---------- compatibility shims (must run before the page's own scripts) ----------
+  // The prototype runs in a sandbox without same-origin access, where touching localStorage,
+  // sessionStorage or document.cookie throws a SecurityError. Many sites use them for intro
+  // animations, chat widgets or consent banners, and the error stops the rest of their script,
+  // freezing animations half-way. Give them in-memory stand-ins so the page behaves as designed.
+  function memoryStorage() {
+    var data = {};
+    var api = {
+      getItem: function (k) {
+        k = String(k);
+        return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null;
+      },
+      setItem: function (k, v) {
+        data[String(k)] = String(v);
+      },
+      removeItem: function (k) {
+        delete data[String(k)];
+      },
+      clear: function () {
+        data = {};
+      },
+      key: function (i) {
+        var keys = Object.keys(data);
+        return i < keys.length ? keys[i] : null;
+      },
+    };
+    Object.defineProperty(api, 'length', {
+      get: function () {
+        return Object.keys(data).length;
+      },
+    });
+    return api;
+  }
+
+  ['localStorage', 'sessionStorage'].forEach(function (name) {
+    try {
+      window[name].getItem('__probe');
+    } catch (e) {
+      try {
+        Object.defineProperty(window, name, { value: memoryStorage(), configurable: true });
+      } catch (err) {}
+    }
+  });
+
+  try {
+    void document.cookie;
+  } catch (e) {
+    var jar = {};
+    try {
+      Object.defineProperty(document, 'cookie', {
+        configurable: true,
+        get: function () {
+          return Object.keys(jar)
+            .map(function (k) {
+              return k + '=' + jar[k];
+            })
+            .join('; ');
+        },
+        set: function (v) {
+          var pair = String(v).split(';')[0];
+          var i = pair.indexOf('=');
+          if (i > 0) jar[pair.slice(0, i).trim()] = pair.slice(i + 1).trim();
+        },
+      });
+    } catch (err) {}
+  }
+
   if (window.parent === window || window.__reviewPortal) return;
   window.__reviewPortal = true;
 
@@ -235,6 +302,11 @@
         }
       }, 450);
     }
+  });
+
+  // Tell the portal about script errors so the agency can see why a prototype misbehaves.
+  window.addEventListener('error', function (e) {
+    send({ type: 'page-error', message: String(e.message || 'Script error').slice(0, 300), source: String(e.filename || '').split('/').pop() });
   });
 
   function ready() {
