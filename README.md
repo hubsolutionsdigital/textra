@@ -15,7 +15,7 @@ approval and a "development has started" hand-off.
   them **Done** or **Discussed** or reply, without signing in.
 - Upload one design per page: a **PDF**, a single **.html** file, or a **.zip** of an HTML prototype (HTML + CSS,
   JS, images and fonts) so animations, scroll effects and interactions work as built.
-- Upload one PDF per page ("Home", "About"…). Drag & drop several at once, then reorder or rename them, and add a note per page.
+  Drag & drop several at once, then reorder or rename them, and add a note per page.
 - Copy the client link. The same link works for every round.
 - See feedback live, mark comments **Done** or **Discussed**, and reply. Replies show to the client in the next round.
 - When the client submits a round, upload updated PDFs, then click **Open round N+1**. After the last round, upload the finals and click **Send final for approval**.
