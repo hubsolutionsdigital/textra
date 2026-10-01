@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { KINDS, isActionable } from '../guidance.js';
 import { timeAgo } from '../util.js';
+import { deviceLabel } from './HtmlStage.jsx';
 
 const STATUS = {
   done: { label: 'Done', icon: '✅' },
@@ -11,7 +12,18 @@ const STATUS = {
  * One piece of feedback. Agency mode adds status + reply controls;
  * client mode lets the author remove their own comment while the round is open.
  */
-export default function CommentCard({ comment, number, urls, mode, canDelete, onDelete, onUpdate, compact, pending }) {
+export default function CommentCard({
+  comment,
+  number,
+  urls,
+  mode,
+  canDelete,
+  onDelete,
+  onUpdate,
+  compact,
+  pending,
+  hiddenHere,
+}) {
   const kind = KINDS[comment.kind] ?? KINDS.change;
   const [reply, setReply] = useState(comment.agency_reply);
   const [editingReply, setEditingReply] = useState(false);
@@ -26,8 +38,10 @@ export default function CommentCard({ comment, number, urls, mode, canDelete, on
         <span className="comment-kind">
           {kind.emoji} {kind.label}
         </span>
+        {comment.device && <span className="round-chip">{deviceLabel(comment.device)}</span>}
         <span className="round-chip">R{comment.round}</span>
       </div>
+      {hiddenHere && <div className="hidden-note">Not visible at this screen size. Click to jump to it.</div>}
       {comment.body && <p className="comment-body">{comment.body}</p>}
       {comment.attachments.length > 0 && (
         <div className="comment-images">

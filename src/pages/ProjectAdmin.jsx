@@ -276,6 +276,9 @@ function NextStep({ project, screens, comments, mutate }) {
   }
 }
 
+const ACCEPTED = /\.(pdf|html?|zip)$/i;
+const ACCEPT_ATTR = 'application/pdf,.pdf,text/html,.html,.htm,application/zip,.zip';
+
 function uploadTarget(project) {
   if (project.stage === 'review') return `round ${project.current_round}`;
   if (project.stage === 'revising') {
@@ -293,7 +296,7 @@ function PagesTab({ project, screens, comments, mutate }) {
     try {
       for (const file of files) {
         const fd = new FormData();
-        const title = file.name.replace(/\.pdf$/i, '').replace(/[-_]+/g, ' ').trim();
+        const title = file.name.replace(/\.(pdf|html?|zip)$/i, '').replace(/[-_]+/g, ' ').trim();
         fd.append('title', title.charAt(0).toUpperCase() + title.slice(1));
         fd.append('file', file);
         await mutate('POST', '/screens', fd);
@@ -318,12 +321,12 @@ function PagesTab({ project, screens, comments, mutate }) {
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
-            addFiles([...e.dataTransfer.files].filter((f) => f.type === 'application/pdf'));
+            addFiles([...e.dataTransfer.files].filter((f) => ACCEPTED.test(f.name)));
           }}
         >
           <input
             type="file"
-            accept="application/pdf"
+            accept={ACCEPT_ATTR}
             multiple
             hidden
             onChange={(e) => {
@@ -332,8 +335,11 @@ function PagesTab({ project, screens, comments, mutate }) {
             }}
           />
           <div className="dropzone-emoji">📄</div>
-          <strong>{busy ? 'Uploading…' : 'Drop PDFs here or click to add pages'}</strong>
-          <span className="muted small">One PDF per page, e.g. “Home page.pdf”, “About.pdf”. Rename them after.</span>
+          <strong>{busy ? 'Uploading…' : 'Drop designs here or click to add pages'}</strong>
+          <span className="muted small">
+            One file per page: a <strong>PDF</strong>, an <strong>.html</strong> file, or a <strong>.zip</strong> of an
+            HTML prototype (with its CSS, JS, images and fonts, for animations and scroll effects). Rename pages after.
+          </span>
         </label>
       )}
       {screens.length > 0 && project.stage !== 'approved' && (
@@ -410,7 +416,8 @@ function ScreenRow({ project, screen, comments, mutate, onMove, first, last }) {
                 {screen.title}
               </Link>
               <span className="badge badge-grey">{versionLabel(screen.current_version, project.max_rounds)}</span>
-              {needsUpdate && <span className="badge badge-amber">Needs updated PDF</span>}
+              {screen.current_version?.kind === 'html' && <span className="badge badge-blue">HTML</span>}
+              {needsUpdate && <span className="badge badge-amber">Needs updated design</span>}
             </div>
             {screen.note && <div className="muted small">📝 {screen.note}</div>}
             <div className="muted small">
@@ -429,7 +436,7 @@ function ScreenRow({ project, screen, comments, mutate, onMove, first, last }) {
               Upload new version
               <input
                 type="file"
-                accept="application/pdf"
+                accept={ACCEPT_ATTR}
                 hidden
                 onChange={(e) => {
                   if (e.target.files[0]) upload(e.target.files[0]);

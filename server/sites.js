@@ -1,0 +1,145 @@
+import { unzipSync } from 'fflate';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { UPLOAD_DIR } from './db.js';
+
+const SITES_DIR = path.join(UPLOAD_DIR, 'sites');
+const MAX_FILES = 3000;
+const MAX_UNZIPPED_BYTES = 400 * 1024 * 1024;
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.htm': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.wasm': 'application/wasm',
+  '.txt': 'text/plain; charset=utf-8',
+  '.lottie': 'application/zip',
+};
+
+export const isHtmlName = (name) => /\.html?$/i.test(name);
+export const isZipName = (name) => /\.zip$/i.test(name);
+
+class SiteError extends Error {
+  constructor(message) {
+    super(message);
+    this.status = 400;
+  }
+}
+
+/** Picks the page to open first: a root index.html, else the shallowest index.html, else the only/first .html. */
+function pickEntry(files) {
+  const html = files.filter(isHtmlName).sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
+  if (!html.length) throw new SiteError('The zip has no .html file in it');
+  return html.find((f) => /(^|\/)index\.html?$/i.test(f)) ?? html[0];
+}
+
+/**
+ * Stores an uploaded .html file or .zip of a static site under uploads/sites/<random>/.
+ * Returns the stored folder name (relative to UPLOAD_DIR) and the entry page path within it.
+ */
+export function storeSite(file) {
+  const id = crypto.randomBytes(12).toString('hex');
+  const dir = path.join(SITES_DIR, id);
+  try {
+    if (isHtmlName(file.originalname)) {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.copyFileSync(file.path, path.join(dir, 'index.html'));
+      return { storedName: `sites/${id}`, entry: 'index.html' };
+    }
+    let entries;
+    try {
+      entries = unzipSync(new Uint8Array(fs.readFileSync(file.path)));
+    } catch {
+      throw new SiteError('That zip file couldn’t be opened');
+    }
+    let names = Object.keys(entries).filter((n) => !n.endsWith('/') && !/(^|\/)(__MACOSX|\.DS_Store)/.test(n));
+    if (names.some((n) => n.startsWith('/') || /^[a-z]:/i.test(n) || n.split(/[\\/]/).includes('..'))) {
+      throw new SiteError('The zip contains an unsafe file path');
+    }
+    if (names.length > MAX_FILES) throw new SiteError(`The zip has too many files (max ${MAX_FILES})`);
+    const total = names.reduce((sum, n) => sum + entries[n].length, 0);
+    if (total > MAX_UNZIPPED_BYTES) throw new SiteError('The unzipped site is too large');
+
+    // If everything sits inside one top-level folder (common when zipping a folder), strip it.
+    const tops = new Set(names.map((n) => n.split('/')[0]));
+    const strip = tops.size === 1 && names.every((n) => n.includes('/')) ? `${[...tops][0]}/` : '';
+
+    for (const name of names) {
+      const rel = name.slice(strip.length);
+      const target = path.resolve(dir, rel);
+      if (!target.startsWith(dir + path.sep)) throw new SiteError('The zip contains an unsafe file path');
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, entries[name]);
+    }
+    names = names.map((n) => n.slice(strip.length));
+    return { storedName: `sites/${id}`, entry: pickEntry(names) };
+  } catch (err) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    throw err;
+  } finally {
+    fs.rmSync(file.path, { force: true });
+  }
+}
+
+/** Points root-relative URLs ("/css/x.css") at the site's own folder instead of the portal. */
+function rewriteRootUrls(text, base) {
+  return text
+    .replace(/(\s(?:src|href|poster|action|data-src)\s*=\s*)(["'])\/(?!\/)/gi, `$1$2${base}`)
+    .replace(/(srcset\s*=\s*["'][^"']*)/gi, (m) => m.replace(/(^|,\s*|["']\s*)\/(?!\/)/g, `$1${base}`))
+    .replace(/url\(\s*(["']?)\/(?!\/)/gi, `url($1${base}`);
+}
+
+const HELPER_TAG = '<script src="/__portal/frame.js"></script>';
+
+/** Adds the commenting helper to a page, as early as possible so it sees every click. */
+function injectHelper(html) {
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => `${m}${HELPER_TAG}`);
+  if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, (m) => `${m}${HELPER_TAG}`);
+  return HELPER_TAG + html;
+}
+
+/**
+ * Serves one file of an uploaded site. Pages are delivered with a CSP sandbox (opaque origin) so their
+ * scripts can never act as the portal or read its cookies, even if the URL is opened directly.
+ */
+export function serveSiteFile(res, storedName, siteToken, relPath) {
+  const dir = path.join(UPLOAD_DIR, storedName);
+  let target = path.resolve(dir, decodeURIComponent(relPath || ''));
+  if (target !== dir && !target.startsWith(dir + path.sep)) return res.status(404).end();
+  if (fs.existsSync(target) && fs.statSync(target).isDirectory()) target = path.join(target, 'index.html');
+  if (!fs.existsSync(target)) return res.status(404).type('text/plain').send('Not found');
+
+  const ext = path.extname(target).toLowerCase();
+  const base = `/sites/${siteToken}/`;
+  res.setHeader('Content-Type', MIME[ext] ?? 'application/octet-stream');
+  res.setHeader('Content-Security-Policy', 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-popups-to-escape-sandbox');
+  // Sandboxed pages have an opaque ("null") origin, so fonts and module scripts need CORS to load.
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'private, max-age=300');
+
+  if (ext === '.html' || ext === '.htm') {
+    return res.send(injectHelper(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base)));
+  }
+  if (ext === '.css') return res.send(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base));
+  res.sendFile(target);
+}

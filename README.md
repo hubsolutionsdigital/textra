@@ -13,6 +13,8 @@ approval and a "development has started" hand-off.
 - Every time the client submits a round, those addresses get an email summarising the comments. It includes a
   **team link** (`/t/…`) where anyone on the team can open the comments, see them pinned on the design, and mark
   them **Done** or **Discussed** or reply, without signing in.
+- Upload one design per page: a **PDF**, a single **.html** file, or a **.zip** of an HTML prototype (HTML + CSS,
+  JS, images and fonts) so animations, scroll effects and interactions work as built.
 - Upload one PDF per page ("Home", "About"…). Drag & drop several at once, then reorder or rename them, and add a note per page.
 - Copy the client link. The same link works for every round.
 - See feedback live, mark comments **Done** or **Discussed**, and reply. Replies show to the client in the next round.
@@ -38,6 +40,22 @@ approval and a "development has started" hand-off.
   A **Feedback log** lists every round.
 - After the last round, a "that's a wrap" celebration shows. When the final design arrives, there's an **Approve design** button,
   and approving triggers the "Development has started 🚀" screen with the live URL once shared.
+
+## HTML prototypes
+
+- Clients switch between **Desktop (1440px), Laptop (1280px), Tablet (768px) and Mobile (390px)**, and the live page
+  re-flows at that width.
+- **Comment / Interact** switch: in Comment mode, a click pins a comment to the exact element. In Interact mode, menus,
+  sliders, links and forms work normally.
+- Pins are anchored to the element (plus the click position inside it), so they follow scrolling, sticky headers and
+  animations, and still land in the right place at other screen sizes. Each comment records the screen size it was left
+  on. If its element isn't visible at the current size, the sidebar says so, and clicking it jumps to that size.
+- Multi-page zips work: links between pages navigate inside the viewer, and pins only show on their own page.
+- Safety: prototypes are served from `/sites/<random token>/` with a `Content-Security-Policy: sandbox` header and a
+  sandboxed iframe (no same-origin), so their scripts can't read the portal, its cookies or other projects. Root-relative
+  URLs (`/css/app.css`) are rewritten to the prototype's folder. Zips with `..` or absolute paths are rejected.
+- Limitations: prototypes must be static files (no server code). Scripts in the prototype can't use cookies or
+  `localStorage`, because of the sandbox.
 
 ## Stack
 

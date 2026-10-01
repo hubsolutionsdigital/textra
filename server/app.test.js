@@ -153,3 +153,81 @@ test('client cannot read another project or delete others comments', async () =>
   r = await api('GET', '/api/team/nope', undefined, { agency: false });
   assert.equal(r.status, 404);
 });
+
+test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep element anchor + device', async () => {
+  const { zipSync, strToU8 } = await import('fflate');
+  await api('POST', '/api/auth/register', { email: 'html@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Proto', notify_emails: 'pm@studio.test' });
+  const { id: projectId, share_token: shareToken } = r.data.project;
+
+  // single .html file
+  let fd = new FormData();
+  fd.append('file', new Blob(['<html><head><title>x</title></head><body><h1>Hi</h1></body></html>'], { type: 'text/html' }), 'Landing.html');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const single = r.data.screens[0];
+  assert.equal(single.title, 'Landing');
+  assert.equal(single.current_version.kind, 'html');
+  assert.equal(single.current_version.entry, 'index.html');
+
+  let res = await fetch(`${base}/sites/${single.current_version.site_token}/index.html`);
+  const page = await res.text();
+  assert.match(res.headers.get('content-security-policy'), /^sandbox allow-scripts/);
+  assert.doesNotMatch(res.headers.get('content-security-policy'), /allow-same-origin/);
+  assert.match(page, /<head><script src="\/__portal\/frame\.js"><\/script>/);
+
+  // zip in a wrapping folder, with assets and a root-relative URL
+  const zip = zipSync({
+    'site/index.html': strToU8('<html><head><link rel="stylesheet" href="/css/app.css"></head><body><img src="img/a.png"></body></html>'),
+    'site/css/app.css': strToU8('body{background:url(/img/a.png)}'),
+    'site/img/a.png': new Uint8Array([137, 80, 78, 71]),
+  });
+  fd = new FormData();
+  fd.append('title', 'Home');
+  fd.append('file', new Blob([zip], { type: 'application/zip' }), 'home.zip');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  const v = r.data.screens[1].current_version;
+  assert.equal(v.entry, 'index.html');
+  res = await fetch(`${base}/sites/${v.site_token}/index.html`);
+  assert.match(await res.text(), new RegExp(`href="/sites/${v.site_token}/css/app.css"`));
+  res = await fetch(`${base}/sites/${v.site_token}/css/app.css`);
+  assert.match(await res.text(), new RegExp(`url\\(/sites/${v.site_token}/img/a.png\\)`));
+  res = await fetch(`${base}/sites/${v.site_token}/img/a.png`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('access-control-allow-origin'), '*');
+  res = await fetch(`${base}/sites/${v.site_token}`, { redirect: 'manual' });
+  assert.equal(res.status, 302);
+  res = await fetch(`${base}/sites/${v.site_token}/..%2f..%2fportal.db`);
+  assert.equal(res.status, 404);
+  res = await fetch(`${base}/sites/not-a-token/index.html`);
+  assert.equal(res.status, 404);
+  res = await fetch(`${base}/__portal/frame.js`);
+  assert.match(await res.text(), /postMessage/);
+
+  // zip-slip is rejected
+  fd = new FormData();
+  for (const evil of [{ '../evil.html': strToU8('x') }, { 'index.html': strToU8('x'), 'a/../../evil.html': strToU8('x') }]) {
+    fd = new FormData();
+    fd.append('file', new Blob([zipSync(evil)], { type: 'application/zip' }), 'evil.zip');
+    r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+    assert.equal(r.status, 400);
+    assert.match(r.data.error, /unsafe file path/);
+  }
+
+  // client comment anchored to an element at a given device size
+  const c = new FormData();
+  c.append('author_name', 'Jane');
+  c.append('screen_id', String(r.data?.screens?.[1]?.id ?? (await api('GET', `/api/projects/${projectId}`)).data.screens[1].id));
+  c.append('kind', 'change');
+  c.append('body', 'Make the hero image bigger');
+  c.append('x', '0.5');
+  c.append('y', '0.5');
+  c.append('device', 'mobile');
+  c.append('anchor', JSON.stringify({ page: 'index.html', selector: 'body > img:nth-of-type(1)', fx: 0.5, fy: 0.25, px: 100, py: 200, vw: 390 }));
+  r = await api('POST', `/api/share/${shareToken}/comments`, c, { agency: false });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const saved = r.data.comments.at(-1);
+  assert.equal(saved.device, 'mobile');
+  assert.equal(JSON.parse(saved.anchor).selector, 'body > img:nth-of-type(1)');
+  assert.ok(r.data.screens[1].current_version.site_token, 'client gets the site token to view it');
+});

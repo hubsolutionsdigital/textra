@@ -147,6 +147,13 @@ function migrate(db) {
   const setToken = db.prepare('UPDATE projects SET team_token = ? WHERE id = ?');
   for (const { id } of missing) setToken.run(crypto.randomBytes(18).toString('base64url'), id);
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_team_token ON projects(team_token)');
+  // HTML prototypes: versions can be a static site; comments can be anchored to page elements.
+  if (!has('versions', 'kind')) db.exec(`ALTER TABLE versions ADD COLUMN kind TEXT NOT NULL DEFAULT 'pdf'`);
+  if (!has('versions', 'site_token')) db.exec('ALTER TABLE versions ADD COLUMN site_token TEXT');
+  if (!has('versions', 'entry')) db.exec('ALTER TABLE versions ADD COLUMN entry TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_versions_site_token ON versions(site_token)');
+  if (!has('comments', 'anchor')) db.exec('ALTER TABLE comments ADD COLUMN anchor TEXT');
+  if (!has('comments', 'device')) db.exec('ALTER TABLE comments ADD COLUMN device TEXT');
   if (!has('comments', 'status_changed_at')) {
     db.exec(`ALTER TABLE comments ADD COLUMN status_changed_at TEXT`);
   }

@@ -1758,3 +1758,85 @@ label {
     font-size: 16px;
   }
 }
+
+/* ---------- HTML prototypes ---------- */
+.canvas-scroll.is-html {
+  padding: 0;
+  position: relative;
+  overflow: hidden;
+}
+.html-stage {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+.device-frame {
+  position: absolute;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.device-frame.device-mobile,
+.device-frame.device-tablet {
+  border: 8px solid #1b2433;
+  border-radius: 28px;
+  box-sizing: content-box;
+}
+.device-frame iframe {
+  border: 0;
+  display: block;
+  transform-origin: 0 0;
+  background: #fff;
+}
+.stage-anchor {
+  position: absolute;
+  width: 0;
+  height: 0;
+  z-index: 20;
+}
+.stage-anchor .composer,
+.stage-anchor .pin-popover {
+  top: var(--dy, -8px);
+}
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.segmented button {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 5px 10px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.segmented button:last-child {
+  border-right: 0;
+}
+.segmented button.active {
+  background: var(--primary);
+  color: #fff;
+}
+.hidden-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+@media (max-width: 900px) {
+  .segmented button {
+    padding: 5px 7px;
+  }
+  .segmented button span[aria-hidden] {
+    display: none;
+  }
+}

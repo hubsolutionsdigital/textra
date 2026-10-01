@@ -9,6 +9,7 @@ const KIND_LABEL = {
   question: '❓ Question',
 };
 const POSITIVE = new Set(['love', 'like', 'great']);
+const DEVICE_LABEL = { desktop: 'Desktop', laptop: 'Laptop', tablet: 'Tablet', mobile: 'Mobile' };
 
 /** Splits, validates and de-duplicates a list of notification emails. */
 export function parseEmails(input) {
@@ -38,7 +39,10 @@ export function roundSubmittedEmail({ project, round, author, screens, comments,
     '',
     ...groups.flatMap((g) => [
       `== ${g.screen.title} ==`,
-      ...g.items.map((c) => `- ${KIND_LABEL[c.kind] ?? c.kind}${c.body ? `: ${c.body}` : ''} (${c.author_name})`),
+      ...g.items.map(
+        (c) =>
+          `- ${KIND_LABEL[c.kind] ?? c.kind}${c.body ? `: ${c.body}` : ''} (${c.author_name}${c.device ? `, ${DEVICE_LABEL[c.device] ?? c.device}` : ''})`,
+      ),
       '',
     ]),
     `Project dashboard (sign-in): ${adminUrl}`,
@@ -64,7 +68,7 @@ export function roundSubmittedEmail({ project, round, author, screens, comments,
         (c) => `<div style="border-left:3px solid ${POSITIVE.has(c.kind) ? '#0f766e' : c.kind === 'question' ? '#2f6fd6' : '#b45309'};background:#f7f9fc;border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:14px">
       <strong>${esc(KIND_LABEL[c.kind] ?? c.kind)}</strong>${c.body ? `<div style="white-space:pre-wrap;margin-top:2px">${esc(c.body)}</div>` : ''}
       ${c.attachments?.length ? `<div style="font-size:12px;color:#5b6b80;margin-top:2px">📎 ${c.attachments.length} screenshot${c.attachments.length === 1 ? '' : 's'}</div>` : ''}
-      <div style="font-size:12px;color:#5b6b80;margin-top:2px">${esc(c.author_name)}</div>
+      <div style="font-size:12px;color:#5b6b80;margin-top:2px">${esc(c.author_name)}${c.device ? ` · ${esc(DEVICE_LABEL[c.device] ?? c.device)}` : ''}</div>
     </div>`,
       )
       .join('')}`,

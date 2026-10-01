@@ -422,6 +422,10 @@ function HowItWorks() {
           {KINDS.change.emoji} to suggest a change. You can paste screenshots too.
         </li>
         <li>
+          Interactive prototype? Use the <strong>Desktop / Tablet / Mobile</strong> buttons to check each size, and{' '}
+          <strong>Interact</strong> to try menus, links and scroll effects.
+        </li>
+        <li>
           When you’re happy, hit <strong>Submit round</strong>.
         </li>
       </ol>
@@ -576,11 +580,13 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
     else openSubmit();
   };
 
-  const createComment = async ({ screen: s, pdf_page, x, y, kind, body, images }) => {
+  const createComment = async ({ screen: s, pdf_page, x, y, kind, body, images, anchor, device }) => {
     const fd = new FormData();
     Object.entries({ author_name: name, screen_id: s.id, pdf_page, x, y, kind, body }).forEach(([k, v]) =>
       fd.append(k, String(v)),
     );
+    if (anchor) fd.append('anchor', JSON.stringify(anchor));
+    if (device) fd.append('device', device);
     images.forEach((img, i) => fd.append('images', img, img.name || `screenshot-${i + 1}.png`));
     await call('POST', '/comments', fd);
     dismissHint();
@@ -592,6 +598,9 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
         <div className="coach-hint" onClick={dismissHint}>
           <span>
             👆 Click anywhere on the design to leave a comment. Start with what you <strong>love</strong>!
+            {screen.current_version?.kind === 'html' && (
+              <> Switch to <strong>Interact</strong> to try menus, links and animations, and to other screen sizes.</>
+            )}
           </span>
           <button className="link-btn">Got it</button>
         </div>

@@ -5,6 +5,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    proxy: { '/api': 'http://localhost:3001' },
+    proxy: {
+      '/api': 'http://localhost:3001',
+      '/sites': 'http://localhost:3001',
+      '/__portal': 'http://localhost:3001',
+    },
   },
 });

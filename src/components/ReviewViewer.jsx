@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import PdfDocument from './PdfDocument.jsx';
+import HtmlStage, { DEVICES } from './HtmlStage.jsx';
 import Composer from './Composer.jsx';
 import CommentCard from './CommentCard.jsx';
 import { KINDS } from '../guidance.js';
@@ -33,6 +34,14 @@ export default function ReviewViewer({
   const liveRound = ['final', 'approved'].includes(project.stage) ? null : project.current_round;
   const [tab, setTab] = useState(liveRound ? 'current' : 'past');
 
+  // HTML prototypes
+  const isHtml = version?.kind === 'html';
+  const stageRef = useRef(null);
+  const [device, setDevice] = useState('desktop');
+  const [commentMode, setCommentMode] = useState(canComment);
+  const [htmlDraft, setHtmlDraft] = useState(null);
+  const [hiddenIds, setHiddenIds] = useState([]);
+
   const { live, past, numbers } = useMemo(() => {
     const mine = comments.filter((c) => c.screen_id === screen.id);
     const numbers = new Map();
@@ -52,6 +61,13 @@ export default function ReviewViewer({
   const focusComment = (c) => {
     setActiveId(c.id);
     if (c.round !== liveRound) setShowPast(true);
+    if (isHtml) {
+      setHtmlDraft(null);
+      // Jump to the screen size it was left on if it isn't visible at the current one.
+      if (hiddenIds.includes(c.id) && c.device) setDevice(c.device);
+      setTimeout(() => stageRef.current?.focus(c.id), hiddenIds.includes(c.id) ? 600 : 0);
+      return;
+    }
     requestAnimationFrame(() =>
       document.getElementById(`pin-${c.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
     );
@@ -70,6 +86,7 @@ export default function ReviewViewer({
     urls,
     mode,
     canDelete: canComment && c.round === liveRound && c.author_name === me,
+    hiddenHere: isHtml && hiddenIds.includes(c.id),
     // For the client: feedback from a submitted round that the team hasn't closed yet.
     pending: mode === 'client' && c.status === 'open' && !(project.stage === 'review' && c.round === project.current_round),
     onDelete: async (cm) => {
@@ -151,6 +168,58 @@ export default function ReviewViewer({
 
   const list = tab === 'current' ? live : past;
 
+  const htmlPins = isHtml
+    ? [...live, ...(showPast ? past : [])]
+        .map((c) => ({ c, a: parseAnchor(c.anchor) }))
+        .filter(({ a }) => a)
+        .map(({ c, a }) => ({
+          ...a,
+          id: c.id,
+          ghost: c.round !== liveRound,
+          tone: KINDS[c.kind]?.tone ?? 'change',
+          label: c.round !== liveRound ? KINDS[c.kind]?.emoji ?? '•' : String(numbers.get(c.id)),
+        }))
+    : [];
+  const byId = (id) => comments.find((c) => c.id === id);
+
+  const renderHtmlPopover = ({ kind, id, left, top, flip, dy, hover }) => {
+    const anchorStyle = { left, top, '--dy': `${dy}px` };
+    if (kind === 'draft') {
+      return (
+        <div className="stage-anchor" style={anchorStyle} key="draft">
+          <Composer
+            flip={flip}
+            onCancel={() => setHtmlDraft(null)}
+            onSubmit={async ({ kind: k, body, images }) => {
+              await onCreate({
+                screen,
+                pdf_page: 1,
+                x: htmlDraft.fx,
+                y: htmlDraft.fy,
+                kind: k,
+                body,
+                images,
+                anchor: htmlDraft,
+                device,
+              });
+              setHtmlDraft(null);
+            }}
+          />
+        </div>
+      );
+    }
+    const c = byId(id);
+    if (!c) return null;
+    return (
+      <div className="stage-anchor" style={anchorStyle} key={`pin-${id}-${hover ? 'h' : 'a'}`}>
+        <div className={`pin-popover ${flip ? 'flip' : ''}`} onClick={(e) => e.stopPropagation()}>
+          {c.round !== liveRound && <div className="popover-label">From round {c.round}</div>}
+          <CommentCard {...cardProps(c)} compact={hover} />
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="viewer">
       <div className="viewer-toolbar">
@@ -160,6 +229,47 @@ export default function ReviewViewer({
           <input type="checkbox" checked={showPast} onChange={(e) => setShowPast(e.target.checked)} />
           <span>Earlier feedback</span>
         </label>
+        {isHtml && (
+          <>
+            <div className="segmented" role="group" aria-label="Screen size">
+              {DEVICES.map((d) => (
+                <button
+                  key={d.id}
+                  className={device === d.id ? 'active' : ''}
+                  onClick={() => {
+                    setDevice(d.id);
+                    setHtmlDraft(null);
+                  }}
+                  title={`${d.label} (${d.width}px)`}
+                >
+                  <span aria-hidden>{d.icon}</span> {d.label}
+                </button>
+              ))}
+            </div>
+            {canComment && (
+              <div className="segmented" role="group" aria-label="Mode">
+                <button
+                  className={commentMode ? 'active' : ''}
+                  onClick={() => setCommentMode(true)}
+                  title="Click anywhere on the page to leave a comment"
+                >
+                  💬 Comment
+                </button>
+                <button
+                  className={!commentMode ? 'active' : ''}
+                  onClick={() => {
+                    setCommentMode(false);
+                    setHtmlDraft(null);
+                  }}
+                  title="Use the page normally: click links, open menus, play animations"
+                >
+                  👆 Interact
+                </button>
+              </div>
+            )}
+          </>
+        )}
+        {!isHtml && (
         <div className="zoom">
           <button className="btn btn-sm btn-ghost" onClick={() => setZoom((z) => Math.max(0.4, +(z - 0.2).toFixed(1)))}>
             −
@@ -171,11 +281,33 @@ export default function ReviewViewer({
             +
           </button>
         </div>
+        )}
       </div>
 
       <div className="viewer-body">
-        <div className={`canvas-scroll ${canComment ? 'can-comment' : ''}`}>
-          {version ? (
+        <div className={`canvas-scroll ${canComment ? 'can-comment' : ''} ${isHtml ? 'is-html' : ''}`}>
+          {isHtml ? (
+            <HtmlStage
+              ref={stageRef}
+              src={`/sites/${version.site_token}/${version.entry}`}
+              device={device}
+              pins={htmlPins}
+              commentMode={canComment && commentMode}
+              activeId={activeId}
+              draftAnchor={htmlDraft}
+              onPageClick={({ anchor }) => {
+                setActiveId(null);
+                setHtmlDraft(anchor);
+              }}
+              onPinClick={(id) => {
+                setHtmlDraft(null);
+                setActiveId((cur) => (cur === id ? null : id));
+              }}
+              onHiddenChange={setHiddenIds}
+              onDismiss={() => setActiveId(null)}
+              renderPopover={renderHtmlPopover}
+            />
+          ) : version ? (
             <PdfDocument url={urls.version(version.id)} zoom={zoom} renderOverlay={renderOverlay} onPageClick={onPageClick} />
           ) : (
             <div className="pdf-status">No design uploaded for this page yet.</div>
@@ -221,4 +353,13 @@ export default function ReviewViewer({
       </div>
     </div>
   );
+}
+
+function parseAnchor(raw) {
+  if (!raw) return null;
+  try {
+    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch {
+    return null;
+  }
 }

@@ -14,6 +14,14 @@ import {
   ZOHO_REGIONS,
 } from './mailer.js';
 import { parseEmails, roundSubmittedEmail } from './emails.js';
+import { isHtmlName, isZipName, serveSiteFile, storeSite } from './sites.js';
+import { fileURLToPath } from 'node:url';
+
+const FRAME_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public', 'frame.js');
+const DEVICES = ['desktop', 'laptop', 'tablet', 'mobile'];
+
+/** Removes a stored upload: a single file, or a whole folder for HTML sites. */
+const removeStored = (storedName) => fs.rmSync(path.join(UPLOAD_DIR, storedName), { recursive: true, force: true });
 
 const SESSION_COOKIE = 'portal_session';
 const SESSION_DAYS = 30;
@@ -60,6 +68,30 @@ function requireEmails(input) {
   if (invalid.length) fail(400, `Not a valid email: ${invalid.join(', ')}`);
   if (!emails.length) fail(400, 'Add at least one email to notify when the client submits a round');
   return emails.join(', ');
+}
+
+/**
+ * Where a comment sits on an HTML page: the clicked element (CSS selector) and the click position
+ * inside it, plus page coordinates as a fallback if the element can't be found later.
+ */
+function parseAnchor(raw) {
+  if (!raw) return null;
+  let a;
+  try {
+    a = JSON.parse(raw);
+  } catch {
+    fail(400, 'Invalid comment position');
+  }
+  const num = (n, max) => Math.min(max, Math.max(0, Number(n) || 0));
+  return {
+    page: String(a.page ?? '').slice(0, 500),
+    selector: String(a.selector ?? '').slice(0, 2000),
+    fx: num(a.fx, 1),
+    fy: num(a.fy, 1),
+    px: num(a.px, 1e6),
+    py: num(a.py, 1e7),
+    vw: num(a.vw, 1e4) || 1440,
+  };
 }
 
 export function createApp(db, { mailer = createMailer() } = {}) {
@@ -322,7 +354,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       ...q.attachments.all(p.id),
     ];
     db.prepare('DELETE FROM projects WHERE id = ?').run(p.id);
-    for (const f of files) fs.rmSync(path.join(UPLOAD_DIR, f.stored_name), { force: true });
+    for (const f of files) removeStored(f.stored_name);
     res.json({ ok: true });
   });
 
@@ -360,13 +392,24 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   const uploadRound = (p) =>
     p.stage === 'review' ? p.current_round : p.stage === 'revising' ? p.current_round + 1 : p.max_rounds + 1;
 
+  /** Stores an uploaded design: a PDF, a single .html page, or a .zip of a static site. */
   const addVersion = (p, screenId, file) => {
-    const stored = storedUpload(file, ['application/pdf']);
+    if (!file) fail(400, 'No file uploaded');
     const round = Math.min(uploadRound(p), p.max_rounds + 1);
+    const name = file.originalname.slice(0, 200);
+    if (isHtmlName(name) || isZipName(name)) {
+      const { storedName, entry } = storeSite(file);
+      db.prepare(
+        `INSERT INTO versions (screen_id, round, original_name, stored_name, kind, site_token, entry)
+         VALUES (?, ?, ?, ?, 'html', ?, ?)`,
+      ).run(screenId, round, name, storedName, token(18), entry);
+      return;
+    }
+    const stored = storedUpload(file, ['application/pdf']);
     db.prepare('INSERT INTO versions (screen_id, round, original_name, stored_name) VALUES (?, ?, ?, ?)').run(
       screenId,
       round,
-      file.originalname.slice(0, 200),
+      name,
       stored,
     );
   };
@@ -374,7 +417,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   app.post('/api/projects/:projectId/screens', requireUser, upload.single('file'), (req, res) => {
     const p = ownedProject(req);
     if (p.stage === 'approved') fail(409, 'This project is already approved');
-    const title = cleanName(req.body.title) || cleanName(req.file?.originalname?.replace(/\.pdf$/i, ''));
+    const title = cleanName(req.body.title) || cleanName(req.file?.originalname?.replace(/\.(pdf|html?|zip)$/i, ''));
     if (!title) fail(400, 'Give the page a title');
     tx(db, () => {
       const pos = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS n FROM screens WHERE project_id = ?').get(p.id).n;
@@ -415,7 +458,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
         .all(s.id),
     );
     db.prepare('DELETE FROM screens WHERE id = ?').run(s.id);
-    for (const f of files) fs.rmSync(path.join(UPLOAD_DIR, f.stored_name), { force: true });
+    for (const f of files) removeStored(f.stored_name);
     logEvent(p, req.user.name, 'screen_removed', `Page "${s.title}" removed`);
     res.json(projectBundle(q.project.get(p.id), { forClient: false }));
   });
@@ -543,6 +586,8 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       }
       const clamp = (n) => Math.min(1, Math.max(0, Number(n) || 0));
       const version = db.prepare('SELECT id FROM versions WHERE screen_id = ? ORDER BY id DESC LIMIT 1').get(s.id);
+      const anchor = parseAnchor(req.body.anchor);
+      const device = DEVICES.includes(req.body.device) ? req.body.device : null;
       const files = (req.files ?? []).map((f) => ({
         stored: storedUpload(f, ['image/png', 'image/jpeg', 'image/gif', 'image/webp']),
         mime: f.mimetype,
@@ -550,8 +595,8 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       tx(db, () => {
         const { lastInsertRowid } = db
           .prepare(
-            `INSERT INTO comments (project_id, screen_id, version_id, round, pdf_page, x, y, kind, body, author_name)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO comments (project_id, screen_id, version_id, round, pdf_page, x, y, kind, body, author_name, anchor, device)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             p.id,
@@ -564,6 +609,8 @@ export function createApp(db, { mailer = createMailer() } = {}) {
             kind,
             body,
             author,
+            anchor ? JSON.stringify(anchor) : null,
+            device,
           );
         const addAtt = db.prepare('INSERT INTO attachments (comment_id, stored_name, mime) VALUES (?, ?, ?)');
         for (const f of files) addAtt.run(Number(lastInsertRowid), f.stored, f.mime);
@@ -582,7 +629,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     if (c.author_name !== cleanName(req.body.author_name)) fail(403, 'You can only remove your own comments');
     const files = db.prepare('SELECT stored_name FROM attachments WHERE comment_id = ?').all(c.id);
     db.prepare('DELETE FROM comments WHERE id = ?').run(c.id);
-    for (const f of files) fs.rmSync(path.join(UPLOAD_DIR, f.stored_name), { force: true });
+    for (const f of files) removeStored(f.stored_name);
     res.json(projectBundle(q.project.get(p.id), { forClient: true }));
   });
 
@@ -790,6 +837,23 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       );
     }
   }
+
+  // ---------- uploaded HTML prototypes ----------
+
+  // The site token is unguessable and only handed to people who can see the project, the same
+  // model as the share link. Pages are sandboxed by serveSiteFile.
+  app.get('/__portal/frame.js', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.type('text/javascript').sendFile(FRAME_SCRIPT);
+  });
+
+  app.get(['/sites/:siteToken', '/sites/:siteToken/*rest'], (req, res) => {
+    const v = db.prepare(`SELECT * FROM versions WHERE site_token = ? AND kind = 'html'`).get(req.params.siteToken);
+    if (!v) return res.status(404).type('text/plain').send('Not found');
+    const rest = [].concat(req.params.rest ?? []).join('/');
+    if (!rest) return res.redirect(`/sites/${v.site_token}/${v.entry}`);
+    serveSiteFile(res, v.stored_name, v.site_token, rest);
+  });
 
   // ---------- errors ----------
 
