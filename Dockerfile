@@ -16,8 +16,8 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
 COPY package.json ./
-# Database, uploads and the encryption key live here. Mount a persistent volume at /data.
+# Database, uploads and the encryption key live in /data. Attach a persistent volume there
+# from your host's dashboard (no VOLUME instruction: Railway rejects Dockerfiles that use it).
 RUN mkdir -p /data
-VOLUME ["/data"]
 EXPOSE 3000
 CMD ["node", "--disable-warning=ExperimentalWarning", "server/index.js"]
