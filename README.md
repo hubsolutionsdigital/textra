@@ -76,6 +76,32 @@ npm run build
 PORT=3000 npm start  # serves the built app and API from one process
 ```
 
+## Deploying
+
+The portal is one Node server that keeps its database and uploaded files on disk (`DATA_DIR`). It needs a host
+that runs a long-lived server with a **persistent volume**. Serverless hosts such as Vercel won't work: they have no
+lasting disk (projects and uploads would vanish), and they cap request size at a few MB (PDF and zip uploads would fail).
+
+The included `Dockerfile` runs anywhere containers do. Railway (`railway.json` is included), Render and Fly.io all
+work. Steps for Railway:
+
+1. **New Project → Deploy from GitHub repo**, and pick this repository and the branch to deploy.
+2. Add a **Volume** to the service, mounted at **`/data`**.
+3. Under **Variables**, set:
+   - `APP_URL` = `https://review.yourdomain.com`
+   - `SECRET_KEY` = a long random string (e.g. from `openssl rand -base64 32`). Keep it, and never change it.
+   - `TRUST_PROXY` = `true`
+   - `SIGNUP_EMAIL_DOMAINS` = `yourdomain.com` (lets teammates with that email domain create accounts)
+4. **Settings → Networking → Custom Domain**: add `review.yourdomain.com`, then create the CNAME record it shows you
+   at your domain's DNS provider. HTTPS is set up automatically.
+5. Open the site and create the first account. That one is always allowed, and sign-ups are then limited by
+   `SIGNUP_EMAIL_DOMAINS`.
+6. Connect Zoho Mail or Gmail under **Email settings**. The test email confirms that your host allows outgoing mail;
+   some hosts block email ports on cheaper plans.
+
+Run a **single instance** (SQLite and uploads live on one volume) and back up the volume regularly.
+`npm run reset-password` works from the host's shell or console.
+
 Environment variables:
 
 | Variable | Default | Purpose |
@@ -87,6 +113,8 @@ Environment variables:
 | `MAIL_FROM` | `Design Review Portal <no-reply@localhost>` | Sender address for notification emails. |
 | `SECRET_KEY` | auto-generated file | Key used to encrypt saved mailbox passwords. If you set it, keep it stable. |
 | `TRUST_PROXY` | unset | Express `trust proxy` setting when running behind a reverse proxy. |
+| `SIGNUP_EMAIL_DOMAINS` | unset | After the first account, only emails on these domains can sign up, e.g. `yourstudio.com`. |
+| `ALLOW_SIGNUPS` | unset | Set to `true` to let anyone create an agency account. |
 | `INSECURE_COOKIES` | unset | Set to `1` to allow login over plain HTTP when `NODE_ENV=production` (e.g. local testing). |
 
 Run the API tests with `npm test`.

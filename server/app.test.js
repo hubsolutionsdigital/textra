@@ -6,6 +6,8 @@ import path from 'node:path';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-test-'));
 process.env.DATA_DIR = dir;
+// Most tests create several agency accounts; the sign-up rules have their own test below.
+process.env.ALLOW_SIGNUPS = 'true';
 const { openDb } = await import('./db.js');
 const { createApp } = await import('./app.js');
 
@@ -156,7 +158,8 @@ test('client cannot read another project or delete others comments', async () =>
 
 test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep element anchor + device', async () => {
   const { zipSync, strToU8 } = await import('fflate');
-  await api('POST', '/api/auth/register', { email: 'html@studio.test', name: 'Studio', password: 'password1' });
+  let reg = await api('POST', '/api/auth/register', { email: 'html@studio.test', name: 'Studio', password: 'password1' });
+  assert.equal(reg.status, 200);
   let r = await api('POST', '/api/projects', { name: 'Proto', notify_emails: 'pm@studio.test' });
   const { id: projectId, share_token: shareToken } = r.data.project;
 
@@ -230,4 +233,27 @@ test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep el
   assert.equal(saved.device, 'mobile');
   assert.equal(JSON.parse(saved.anchor).selector, 'body > img:nth-of-type(1)');
   assert.ok(r.data.screens[1].current_version.site_token, 'client gets the site token to view it');
+});
+
+test('sign-ups close after the first account unless the email domain is allowed', async () => {
+  const fresh = createApp(openDb(path.join(dir, 'signup.db')), { mailer });
+  const srv = await new Promise((resolve) => {
+    const x = fresh.listen(0, () => resolve(x));
+  });
+  const url = `http://127.0.0.1:${srv.address().port}/api/auth/register`;
+  const register = (email) =>
+    fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, name: 'X', password: 'password1' }) });
+  delete process.env.ALLOW_SIGNUPS;
+  try {
+    assert.equal((await register('owner@studio.test')).status, 200, 'first account always allowed');
+    assert.equal((await register('stranger@gmail.test')).status, 403);
+    process.env.SIGNUP_EMAIL_DOMAINS = 'studio.test, other.test';
+    assert.equal((await register('teammate@studio.test')).status, 200);
+    assert.equal((await register('stranger@gmail.test')).status, 403);
+  } finally {
+    delete process.env.SIGNUP_EMAIL_DOMAINS;
+    process.env.ALLOW_SIGNUPS = 'true';
+    srv.closeAllConnections();
+    srv.close();
+  }
 });

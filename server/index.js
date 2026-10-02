@@ -14,4 +14,8 @@ if (fs.existsSync(dist)) {
 }
 
 const port = Number(process.env.PORT) || 3001;
-app.listen(port, () => console.log(`Review portal API listening on http://localhost:${port}`));
+app.listen(port, () => console.log(`Review portal listening on port ${port}`));
+
+if (process.env.NODE_ENV === 'production' && !process.env.APP_URL) {
+  console.warn('[config] APP_URL is not set; links in emails will use the request host. Set APP_URL to your public URL.');
+}

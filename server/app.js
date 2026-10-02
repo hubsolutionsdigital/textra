@@ -175,6 +175,12 @@ export function createApp(db, { mailer = createMailer() } = {}) {
 
   const clientCanComment = (p) => p.stage === 'review';
 
+  // Health check for the hosting platform: confirms the app is up and the database answers.
+  app.get('/api/health', (req, res) => {
+    db.prepare('SELECT 1').get();
+    res.json({ ok: true });
+  });
+
   // ---------- auth ----------
 
   function currentUser(req) {
@@ -240,6 +246,20 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     return p;
   }
 
+  /**
+   * Who may create an agency account: anyone while the portal has no accounts (first-run setup),
+   * then only addresses on SIGNUP_EMAIL_DOMAINS (e.g. "yourstudio.com"), or anyone if ALLOW_SIGNUPS=true.
+   */
+  function signupAllowed(email) {
+    if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) return true;
+    if (process.env.ALLOW_SIGNUPS === 'true') return true;
+    const domains = String(process.env.SIGNUP_EMAIL_DOMAINS ?? '')
+      .split(/[\s,]+/)
+      .map((d) => d.trim().toLowerCase().replace(/^@/, ''))
+      .filter(Boolean);
+    return domains.includes(email.split('@')[1]);
+  }
+
   app.post('/api/auth/register', (req, res) => {
     const email = String(req.body.email ?? '').trim().toLowerCase();
     const name = cleanName(req.body.name);
@@ -247,6 +267,9 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     if (!/^\S+@\S+\.\S+$/.test(email)) fail(400, 'Enter a valid email');
     if (!name) fail(400, 'Enter your agency name');
     if (password.length < 8) fail(400, 'Password must be at least 8 characters');
+    if (!signupAllowed(email)) {
+      fail(403, 'Sign-ups are closed on this portal. Ask your admin to add your email domain, or to create your account.');
+    }
     if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) fail(409, 'That email is already registered');
     const { lastInsertRowid } = db
       .prepare('INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)')
