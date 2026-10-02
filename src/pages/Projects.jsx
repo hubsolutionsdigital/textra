@@ -36,7 +36,7 @@ export default function Projects() {
           <Link to="/settings/email" className="next-step highlight setup-banner">
             <div className="next-emoji">✉️</div>
             <div className="grow">
-              <strong>Connect Zoho Mail or Gmail to get notified</strong>
+              <strong>Connect an email service to get notified</strong>
               <p className="muted">
                 You’ll get an email each time a client submits a round of feedback. It takes about 2 minutes.
               </p>

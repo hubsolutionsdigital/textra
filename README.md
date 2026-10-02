@@ -129,7 +129,18 @@ npm run reset-password                                # lists all accounts
 
 This signs the account out everywhere, and it works while the portal is running.
 
-### Sending email (Zoho Mail or Gmail)
+### Sending email
+
+**On Railway's Trial or Hobby plan, use ZeptoMail (by Zoho) or Resend.** Railway blocks outgoing SMTP (ports
+465/587) below the Pro plan, so Zoho Mail and Gmail can't connect there. ZeptoMail and Resend send over HTTPS, which
+always works:
+
+- **ZeptoMail:** at zeptomail.zoho.com, add and verify your domain (DNS records), then copy the agent's
+  *Send Mail token* (Mail Agents → SMTP/API → API). In the portal, choose ZeptoMail, pick the same data centre as your
+  Zoho account, send from an address on that domain, and paste the token.
+- **Resend:** at resend.com, verify your domain, then create an API key and paste it.
+
+Zoho Mail / Gmail over SMTP:
 
 Sign in, then open **✉️ Email settings** (top right). Pick **Zoho Mail**, **Gmail / Google Workspace** or
 **Other (SMTP)**, and enter the address and app password. The portal logs in and sends you a test email before

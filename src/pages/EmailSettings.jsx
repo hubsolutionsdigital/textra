@@ -6,12 +6,49 @@ import AppHeader from '../components/AppHeader.jsx';
 import { formatDate } from '../util.js';
 
 const PROVIDERS = [
-  { id: 'zoho', name: 'Zoho Mail', emoji: '📮' },
-  { id: 'gmail', name: 'Gmail / Google Workspace', emoji: '✉️' },
-  { id: 'smtp', name: 'Other (SMTP)', emoji: '⚙️' },
+  { id: 'zeptomail', name: 'ZeptoMail by Zoho', emoji: '⚡', note: 'Recommended on Railway' },
+  { id: 'resend', name: 'Resend', emoji: '📨', note: 'Works on any host' },
+  { id: 'zoho', name: 'Zoho Mail', emoji: '📮', note: 'Needs SMTP' },
+  { id: 'gmail', name: 'Gmail / Google Workspace', emoji: '✉️', note: 'Needs SMTP' },
+  { id: 'smtp', name: 'Other (SMTP)', emoji: '⚙️', note: 'Needs SMTP' },
 ];
 
+const API_PROVIDERS = ['zeptomail', 'resend'];
+
 const HELP = {
+  zeptomail: (
+    <ol>
+      <li>
+        Sign in at <strong>zeptomail.zoho.com</strong> with your Zoho account. It’s Zoho’s service for automatic emails and
+        comes with free starter credits.
+      </li>
+      <li>
+        Add your domain (e.g. <em>hubsolutions.one</em>). ZeptoMail shows a few DNS records (TXT and CNAME). Add them where
+        you manage your domain’s DNS and wait until the domain shows as <strong>verified</strong>.
+      </li>
+      <li>
+        Open <strong>Mail Agents</strong>, then your agent, then <strong>SMTP/API → API</strong>, and copy the{' '}
+        <strong>Send Mail token</strong>. Paste it below. The “Zoho-enczapikey” part is optional.
+      </li>
+      <li>
+        Choose the same <strong>data centre</strong> as your Zoho account, and send from an address on the verified domain.
+      </li>
+    </ol>
+  ),
+  resend: (
+    <ol>
+      <li>
+        Sign up at <strong>resend.com</strong> (free plan available).
+      </li>
+      <li>
+        Go to <strong>Domains → Add domain</strong>, add the DNS records it shows, and wait for <strong>Verified</strong>.
+      </li>
+      <li>
+        Go to <strong>API Keys → Create API key</strong> (sending access is enough), and paste it below.
+      </li>
+      <li>Send from any address on the verified domain, e.g. you@yourdomain.com.</li>
+    </ol>
+  ),
   zoho: (
     <ol>
       <li>
@@ -64,7 +101,7 @@ export default function EmailSettings() {
       setLoaded(d);
       const s = d.settings;
       setForm({
-        provider: s?.provider ?? 'zoho',
+        provider: s?.provider ?? 'zeptomail',
         region: s?.region ?? 'com',
         zoho_account: s?.zoho_account ?? 'business',
         host: s?.host ?? '',
@@ -130,7 +167,7 @@ export default function EmailSettings() {
               <p className="muted">
                 {loaded.server_default
                   ? 'Notifications currently use the server’s default mail settings. Connect your own mailbox below to send from your address.'
-                  : 'Notifications aren’t being sent. Connect Zoho Mail or Gmail below.'}
+                  : 'Notifications aren’t being sent yet. Connect an email service below.'}
               </p>
             </div>
           </div>
@@ -147,11 +184,25 @@ export default function EmailSettings() {
               >
                 <span className="provider-emoji">{p.emoji}</span>
                 {p.name}
+                <span className="provider-note">{p.note}</span>
               </button>
             ))}
           </div>
 
           <div className="help-box">{HELP[form.provider]}</div>
+
+          {form.provider === 'zeptomail' && (
+            <label>
+              Data centre
+              <select value={form.region} onChange={set('region')}>
+                {loaded.zoho_regions.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           {form.provider === 'zoho' && (
             <div className="grid-2">
@@ -194,9 +245,12 @@ export default function EmailSettings() {
           <label>
             Email address to send from
             <input type="email" value={form.username} onChange={set('username')} required />
+            {API_PROVIDERS.includes(form.provider) && (
+              <span className="muted small">Must be on the domain you verified, e.g. notifications@hubsolutions.one</span>
+            )}
           </label>
           <label>
-            {form.provider === 'smtp' ? 'Password' : 'App password'}
+            {{ zeptomail: 'Send Mail token', resend: 'API key', smtp: 'Password' }[form.provider] ?? 'App password'}
             <input
               type="password"
               value={form.password}
@@ -234,7 +288,7 @@ export default function EmailSettings() {
             )}
           </div>
           <p className="muted small">
-            We log in and send you a test email before saving, so you’ll know right away if something’s wrong. Your
+            We connect and send you a test email before saving, so you’ll know right away if something’s wrong. Your
             password is stored encrypted.
           </p>
         </form>

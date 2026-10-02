@@ -1674,7 +1674,7 @@ label {
 }
 .provider-picker {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 10px;
 }
 .provider {
@@ -1727,7 +1727,6 @@ label {
   align-items: center;
 }
 @media (max-width: 600px) {
-  .provider-picker,
   .grid-2 {
     grid-template-columns: 1fr;
   }
@@ -1858,4 +1857,13 @@ label {
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.provider-note {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+.provider.active .provider-note {
+  color: var(--primary);
 }

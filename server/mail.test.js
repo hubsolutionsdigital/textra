@@ -111,3 +111,46 @@ test('agency saves an email account, gets a test email, and round emails go out 
   r = await api('GET', `/api/projects/${project.id}`);
   assert.ok(r.data.events.some((e) => e.type === 'email_sent' && e.message.includes('from studio@example.com')));
 });
+
+test('ZeptoMail and Resend send over HTTPS with the right request shape', async () => {
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes('zeptomail') || u.includes('resend.com')) {
+      calls.push({ url: u, headers: init.headers, body: JSON.parse(init.body) });
+      if (init.headers.Authorization.includes('bad')) {
+        return new Response(JSON.stringify({ error: { code: 'TM_3201', details: [{ message: 'Invalid API Token found' }], message: 'Invalid' } }), { status: 401 });
+      }
+      return new Response(JSON.stringify({ data: [{ message: 'Email request received' }] }), { status: 201 });
+    }
+    return realFetch(url, init);
+  };
+  try {
+    const zform = { provider: 'zeptomail', region: 'in', username: 'susan@hubsolutions.one', from_name: 'Hub Solutions Digital' };
+
+    let r = await api('PUT', '/api/mail-settings', { ...zform, password: 'Zoho-enczapikey bad-token' });
+    assert.equal(r.status, 400);
+    assert.match(r.data.error, /ZeptoMail rejected the key \(Invalid API Token found\)/);
+
+    r = await api('PUT', '/api/mail-settings', { ...zform, password: 'wSsVR61-token' });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.settings.server, 'api.zeptomail.in');
+    const z = calls.at(-1);
+    assert.equal(z.url, 'https://api.zeptomail.in/v1.1/email');
+    assert.equal(z.headers.Authorization, 'Zoho-enczapikey wSsVR61-token', 'prefix added when missing');
+    assert.deepEqual(z.body.from, { address: 'susan@hubsolutions.one', name: 'Hub Solutions Digital' });
+    assert.deepEqual(z.body.to, [{ email_address: { address: 'owner@studio.test' } }]);
+    assert.ok(z.body.htmlbody && z.body.subject);
+
+    r = await api('PUT', '/api/mail-settings', { provider: 'resend', username: 'susan@hubsolutions.one', from_name: 'Hub', password: 're_123' });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    const rs = calls.at(-1);
+    assert.equal(rs.url, 'https://api.resend.com/emails');
+    assert.equal(rs.headers.Authorization, 'Bearer re_123');
+    assert.equal(rs.body.from, 'Hub <susan@hubsolutions.one>');
+    assert.deepEqual(rs.body.to, ['owner@studio.test']);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

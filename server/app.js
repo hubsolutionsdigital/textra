@@ -716,7 +716,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
 
   // ---------- agency email account (Zoho Mail / Gmail / SMTP) ----------
 
-  const PROVIDERS = ['zoho', 'gmail', 'smtp'];
+  const PROVIDERS = ['zoho', 'gmail', 'zeptomail', 'resend', 'smtp'];
 
   /** Saved settings for a user with the password decrypted, or null. */
   function mailSettingsFor(userId) {
@@ -746,7 +746,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   /** Validates a settings form; a blank password keeps the saved one. */
   function readMailForm(req) {
     const b = req.body ?? {};
-    const provider = PROVIDERS.includes(b.provider) ? b.provider : fail(400, 'Choose Zoho Mail, Gmail or another provider');
+    const provider = PROVIDERS.includes(b.provider) ? b.provider : fail(400, 'Choose how to send email');
     const username = String(b.username ?? '').trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username)) fail(400, 'Enter the email address you send from');
     const saved = mailSettingsFor(req.user.id);
@@ -754,7 +754,9 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     // Google shows app passwords in groups of four ("abcd efgh ijkl mnop"); the spaces aren't part of it.
     if (provider === 'gmail') password = password.replace(/\s+/g, '');
     password ||= saved?.password;
-    if (!password) fail(400, provider === 'smtp' ? 'Enter the password' : 'Enter the app password');
+    if (!password) {
+      fail(400, { zeptomail: 'Paste your ZeptoMail Send Mail token', resend: 'Paste your Resend API key', smtp: 'Enter the password' }[provider] ?? 'Enter the app password');
+    }
     const form = {
       provider,
       region: ZOHO_REGIONS[b.region] ? b.region : 'com',
