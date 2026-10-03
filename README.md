@@ -43,8 +43,10 @@ approval and a "development has started" hand-off.
 
 ## HTML prototypes
 
-- Clients switch between **Desktop (1440px), Laptop (1280px), Tablet (768px) and Mobile (390px)**, and the live page
-  re-flows at that width.
+- Clients switch between **Desktop (1440×900), Laptop (1280×800), Tablet (768×950) and Mobile (390×750)**. Tablet
+  and Mobile heights are what Safari actually gives a page on those devices (screen minus browser bars), so layouts
+  sized from `vh`/`svh` match real phones. The whole screen is always shown, scaled down to fit when needed, and
+  Tablet/Mobile hide desktop scrollbars like real touch devices.
 - Switching screen size reloads the prototype at that size, because many pages size their layout once when they load.
   On Tablet and Mobile the page sees a matching device: screen size, touch support, a mobile user agent, and
   `(pointer: coarse)` / `(hover: none)` in `matchMedia`. CSS media queries on hover/pointer still follow your computer.

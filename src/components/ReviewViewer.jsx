@@ -241,7 +241,7 @@ export default function ReviewViewer({
                     setDevice(d.id);
                     setHtmlDraft(null);
                   }}
-                  title={`${d.label} (${d.width}px)`}
+                  title={`${d.label} (${d.width}${d.height ? ` × ${d.height}` : ""} px)`}
                 >
                   <span aria-hidden>{d.icon}</span> {d.label}
                 </button>

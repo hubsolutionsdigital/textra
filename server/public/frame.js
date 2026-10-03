@@ -102,6 +102,10 @@
     define(navigator, 'userAgent', ua);
     define(navigator, 'platform', isPhone ? 'iPhone' : 'iPad');
     define(navigator, 'maxTouchPoints', 5);
+    // Phones and tablets use overlay scrollbars that take no width; a desktop scrollbar would steal ~15px.
+    var noScrollbar = document.createElement('style');
+    noScrollbar.textContent = 'html{scrollbar-width:none}html::-webkit-scrollbar{width:0;height:0;display:none}';
+    document.documentElement.appendChild(noScrollbar);
     if (!('ontouchstart' in window)) {
       try {
         window.ontouchstart = null;

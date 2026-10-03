@@ -1,11 +1,15 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 
+// Tablet/Mobile heights are the space a page actually gets in the phone/tablet browser (screen minus Safari's
+// bars), not the full screen: layouts sized from the viewport height (vh/svh) otherwise come out too big.
 export const DEVICES = [
-  { id: 'desktop', label: 'Desktop', icon: '🖥️', width: 1440, height: null },
-  { id: 'laptop', label: 'Laptop', icon: '💻', width: 1280, height: null },
-  { id: 'tablet', label: 'Tablet', icon: '📱', width: 768, height: 1024 },
-  { id: 'mobile', label: 'Mobile', icon: '📱', width: 390, height: 844 },
+  { id: 'desktop', label: 'Desktop', icon: '🖥️', width: 1440, height: 900, bezel: false },
+  { id: 'laptop', label: 'Laptop', icon: '💻', width: 1280, height: 800, bezel: false },
+  { id: 'tablet', label: 'Tablet', icon: '📱', width: 768, height: 950, bezel: true },
+  { id: 'mobile', label: 'Mobile', icon: '📱', width: 390, height: 750, bezel: true },
 ];
+
+const DEVICE_BEZEL = 8; // matches .device-frame border on tablet/mobile
 
 export const deviceLabel = (id) => DEVICES.find((d) => d.id === id)?.label;
 
@@ -51,7 +55,12 @@ const HtmlStage = forwardRef(function HtmlStage(
   }, []);
 
   const pad = 24;
-  const scale = size.w ? Math.min(1, (size.w - pad * 2) / preset.width) : 1;
+  // Every size has a fixed viewport (pages often size themselves from the height), shrunk to fit so the whole
+  // screen is visible at once, the way it looks on the real device.
+  const bezel = preset.bezel ? DEVICE_BEZEL * 2 : 0;
+  const fitWidth = (size.w - pad * 2) / (preset.width + bezel);
+  const fitHeight = (size.h - pad * 2) / (preset.height + bezel);
+  const scale = size.w ? Math.min(1, fitWidth, fitHeight) : 1;
   const frameHeight = preset.height ?? Math.max(400, (size.h - pad * 2) / scale);
   const frameLeft = Math.max(pad, (size.w - preset.width * scale) / 2);
 
