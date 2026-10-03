@@ -128,6 +128,9 @@
   window.__reviewPortal = true;
 
   var mode = 'browse';
+  // Set by the server when the site draws its own cursor: keep it, and mark comment mode with a small tag.
+  var customCursor = !!(document.currentScript && document.currentScript.getAttribute('data-custom-cursor'));
+  var cursorTag = null;
   var pins = [];
   var draft = null;
   var hidden = '';
@@ -216,7 +219,10 @@
       '.draft{animation:pulse 1.2s infinite}' +
       '@keyframes pulse{50%{box-shadow:0 0 0 10px rgba(27,58,107,0)}0%,100%{box-shadow:0 0 0 0 rgba(27,58,107,.45)}}' +
       '.flash{animation:flash .9s 2}@keyframes flash{50%{transform:translate(-50%,-50%) scale(1.5)}}' +
-      '</style><div id="pins"></div>';
+      '.cursor-tag{position:fixed;display:none;padding:3px 8px;border-radius:999px;background:#1b3a6b;color:#fff;' +
+      'font:600 11px/1.4 system-ui,sans-serif;white-space:nowrap;box-shadow:0 2px 6px rgba(15,27,45,.3);pointer-events:none}' +
+      '</style><div id="pins"></div><div class="cursor-tag" id="cursor-tag">💬 Click to comment</div>';
+    cursorTag = root.getElementById('cursor-tag');
     document.documentElement.appendChild(host);
     style = document.createElement('style');
     style.textContent = 'html.__rp-comment, html.__rp-comment * { cursor: crosshair !important; }';
@@ -318,6 +324,23 @@
   }
 
   window.addEventListener('click', onClick, true);
+  window.addEventListener(
+    'mousemove',
+    function (e) {
+      if (!customCursor || !cursorTag) return;
+      if (mode !== 'comment' || isOurs(e)) {
+        cursorTag.style.display = 'none';
+        return;
+      }
+      cursorTag.style.display = 'block';
+      cursorTag.style.left = e.clientX + 18 + 'px';
+      cursorTag.style.top = e.clientY + 18 + 'px';
+    },
+    { passive: true },
+  );
+  document.addEventListener('mouseleave', function () {
+    if (cursorTag) cursorTag.style.display = 'none';
+  });
   // Touch events are left alone so the page can still be scrolled on phones in comment mode.
   ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'submit'].forEach(function (t) {
     window.addEventListener(t, swallow, { capture: true, passive: false });
@@ -328,7 +351,8 @@
     var m = e.data;
     if (m.type === 'mode') {
       mode = m.mode;
-      document.documentElement.classList.toggle('__rp-comment', mode === 'comment');
+      document.documentElement.classList.toggle('__rp-comment', mode === 'comment' && !customCursor);
+      if (cursorTag && mode !== 'comment') cursorTag.style.display = 'none';
     } else if (m.type === 'pins') {
       pins = m.pins || [];
       render();

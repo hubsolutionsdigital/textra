@@ -171,6 +171,14 @@ test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep el
   const single = r.data.screens[0];
   assert.equal(r.data.upload_warning, undefined, 'self-contained page: no warning');
 
+  // a site that draws its own cursor keeps it in comment mode
+  fd = new FormData();
+  fd.append('file', new Blob(['<html><head><style>body{cursor:none}</style></head><body></body></html>'], { type: 'text/html' }), 'cursor.html');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  res = await fetch(`${base}/sites/${r.data.screens.at(-1).current_version.site_token}/index.html`);
+  assert.match(await res.text(), /<script src="\/__portal\/frame\.js" data-custom-cursor="1"><\/script>/);
+  await api('DELETE', `/api/projects/${projectId}/screens/${r.data.screens.at(-1).id}`);
+
   // a lone index.html whose images live next to it on the designer's computer
   fd = new FormData();
   fd.append(
@@ -204,7 +212,7 @@ test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep el
   const page = await res.text();
   assert.match(res.headers.get('content-security-policy'), /^sandbox allow-scripts/);
   assert.doesNotMatch(res.headers.get('content-security-policy'), /allow-same-origin/);
-  assert.match(page, /<head><script src="\/__portal\/frame\.js"><\/script>/);
+  assert.match(page, /<head><script src="\/__portal\/frame\.js"><\/script>/, 'no custom cursor flag');
 
   // zip in a wrapping folder, with assets and a root-relative URL
   const zip = zipSync({

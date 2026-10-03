@@ -204,13 +204,31 @@ export function rewriteDeviceQueries(text) {
     .replace(/\(\s*(?:any-)?hover\s*\)/gi, FALSE_MQ);
 }
 
-const HELPER_TAG = '<script src="/__portal/frame.js"></script>';
+const customCursorCache = new Map();
+
+/**
+ * Whether the site draws its own mouse cursor (cursor: none plus a JS follower, or cursor: url(...)).
+ * If so, comment mode keeps the site's cursor instead of forcing a crosshair. Cached per upload.
+ */
+function usesCustomCursor(dir) {
+  if (!customCursorCache.has(dir)) {
+    const pattern = /cursor\s*[:=]\s*["'`]?\s*(none|url\()/i;
+    customCursorCache.set(
+      dir,
+      listFiles(dir)
+        .filter((f) => SCANNED.test(f))
+        .some((f) => pattern.test(fs.readFileSync(path.join(dir, f), 'utf8'))),
+    );
+  }
+  return customCursorCache.get(dir);
+}
 
 /** Adds the commenting helper to a page, as early as possible so it sees every click. */
-function injectHelper(html) {
-  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => `${m}${HELPER_TAG}`);
-  if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, (m) => `${m}${HELPER_TAG}`);
-  return HELPER_TAG + html;
+function injectHelper(html, { customCursor = false } = {}) {
+  const tag = `<script src="/__portal/frame.js"${customCursor ? ' data-custom-cursor="1"' : ''}></script>`;
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => `${m}${tag}`);
+  if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, (m) => `${m}${tag}`);
+  return tag + html;
 }
 
 /**
@@ -237,7 +255,9 @@ export function serveSiteFile(res, storedName, siteToken, relPath, device = null
   res.setHeader('Cache-Control', 'private, max-age=300');
 
   if (ext === '.html' || ext === '.htm') {
-    return res.send(injectHelper(adapt(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base))));
+    return res.send(
+      injectHelper(adapt(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base)), { customCursor: usesCustomCursor(dir) }),
+    );
   }
   if (ext === '.css') return res.send(adapt(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base)));
   res.sendFile(target);
