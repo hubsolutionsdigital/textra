@@ -35,6 +35,7 @@ const HtmlStage = forwardRef(function HtmlStage(
     renderPopover,
     onDismiss,
     onPageError,
+    onPageChange,
   },
   ref,
 ) {
@@ -85,6 +86,7 @@ const HtmlStage = forwardRef(function HtmlStage(
       const m = e.data;
       if (m.type === 'ready') {
         setPage(m.page);
+        onPageChange?.(m.page);
         setLoadCount((n) => n + 1);
         setHover(null);
         setAnchorPos(null);

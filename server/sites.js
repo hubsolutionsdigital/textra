@@ -240,7 +240,23 @@ export function serveSiteFile(res, storedName, siteToken, relPath, device = null
   let target = path.resolve(dir, decodeURIComponent(relPath || ''));
   if (target !== dir && !target.startsWith(dir + path.sep)) return res.status(404).end();
   if (fs.existsSync(target) && fs.statSync(target).isDirectory()) target = path.join(target, 'index.html');
-  if (!fs.existsSync(target)) return res.status(404).type('text/plain').send('Not found');
+  if (!fs.existsSync(target)) {
+    // A link to a page that wasn't uploaded (e.g. a menu item not designed yet): show a friendly page that still
+    // loads the helper, so the portal knows where the reviewer is and can offer a way back.
+    if (/\.html?$/i.test(target) || !path.extname(target)) {
+      const name = path.basename(target).replace(/[<>&"']/g, '');
+      res.status(404);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Content-Security-Policy', 'sandbox allow-scripts');
+      return res.send(
+        injectHelper(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f6f9;color:#0f1b2d;font:16px/1.5 system-ui,sans-serif;text-align:center;padding:24px}
+h1{font-size:20px;margin:0 0 6px}p{margin:0;color:#5b6b80}</style></head>
+<body><div><h1>“${name}” isn’t part of this design yet</h1><p>This link goes to a page that wasn’t uploaded for review.</p></div></body></html>`),
+      );
+    }
+    return res.status(404).type('text/plain').send('Not found');
+  }
 
   const ext = path.extname(target).toLowerCase();
   // Keep the device segment in rewritten root-relative URLs so every asset is served for the same device.

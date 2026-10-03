@@ -2041,3 +2041,8 @@ label {
     bottom: calc(42dvh + 12px);
   }
 }
+
+.page-error.foreign-page {
+  background: var(--question-soft);
+  border-color: #cfddf7;
+}

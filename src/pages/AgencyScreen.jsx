@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, fileUrls } from '../api.js';
 import ReviewViewer from '../components/ReviewViewer.jsx';
 import { versionLabel } from '../guidance.js';
@@ -10,6 +10,7 @@ export default function AgencyScreen() {
   const apiBase = teamToken ? `/api/team/${teamToken}` : `/api/projects/${projectId}`;
   const linkBase = teamToken ? `/t/${teamToken}` : `/projects/${projectId}`;
   const navigate = useNavigate();
+  const location = useLocation();
   const [data, setData] = useState(null);
   const [versionId, setVersionId] = useState(null);
   const [error, setError] = useState('');
@@ -36,6 +37,9 @@ export default function AgencyScreen() {
         key={screen.id}
         project={project}
         screen={screen}
+        screens={screens}
+        view={location.state?.view}
+        onOpenScreen={(target, view) => navigate(`${linkBase}/screens/${target.id}`, { state: { view } })}
         version={version}
         comments={comments}
         urls={fileUrls({ projectId, teamToken })}

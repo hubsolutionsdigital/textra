@@ -25,6 +25,9 @@ export default function ReviewViewer({
   toolbar,
   sidebarTop,
   footer,
+  screens = [],
+  onOpenScreen,
+  view,
 }) {
   const [zoom, setZoom] = useState(1);
   const [showPast, setShowPast] = useState(true);
@@ -38,10 +41,34 @@ export default function ReviewViewer({
   const isHtml = version?.kind === 'html';
   const stageRef = useRef(null);
   // Start at the reviewer's own kind of device: on a phone, a desktop preview would be a tiny thumbnail.
-  const [device, setDevice] = useState(() =>
-    window.innerWidth < 640 ? 'mobile' : window.innerWidth < 1024 ? 'tablet' : 'desktop',
+  // `view` carries device + mode over when the reviewer moves to another page through the design's own menu.
+  const [device, setDevice] = useState(
+    () => view?.device ?? (window.innerWidth < 640 ? 'mobile' : window.innerWidth < 1024 ? 'tablet' : 'desktop'),
   );
-  const [commentMode, setCommentMode] = useState(canComment);
+  const [commentMode, setCommentMode] = useState(view?.commentMode ?? canComment);
+  const [foreignPage, setForeignPage] = useState(null);
+  const [stageKey, setStageKey] = useState(0);
+
+  /**
+   * The design was navigated (e.g. its menu's "Play" link in Interact mode). If that file is another page in
+   * this review, switch to it so the title, comments and Done button follow; otherwise say it isn't reviewed.
+   */
+  const handlePageChange = (page) => {
+    if (!version || page === version.entry) return setForeignPage(null);
+    const target = screens.find(
+      (s) =>
+        s.id !== screen.id &&
+        s.current_version?.kind === 'html' &&
+        s.current_version.stored_name === version.stored_name &&
+        s.current_version.entry === page,
+    );
+    if (target && onOpenScreen) {
+      onOpenScreen(target, { device, commentMode });
+    } else {
+      setHtmlDraft(null);
+      setForeignPage(page);
+    }
+  };
   const [htmlDraft, setHtmlDraft] = useState(null);
   const [hiddenIds, setHiddenIds] = useState([]);
   const [pageError, setPageError] = useState(null);
@@ -299,8 +326,26 @@ export default function ReviewViewer({
               </button>
             </div>
           )}
+          {isHtml && foreignPage && (
+            <div className="page-error foreign-page" role="status">
+              <span>
+                You’re on <strong>{foreignPage}</strong>, which isn’t one of the pages in this review. Comments here are
+                saved on “{screen.title}”.
+              </span>
+              <button
+                className="link-btn"
+                onClick={() => {
+                  setForeignPage(null);
+                  setStageKey((k) => k + 1);
+                }}
+              >
+                Back to {screen.title}
+              </button>
+            </div>
+          )}
           {isHtml ? (
             <HtmlStage
+              key={stageKey}
               ref={stageRef}
               src={`/sites/${version.site_token}/${version.entry}`}
               device={device}
@@ -319,6 +364,7 @@ export default function ReviewViewer({
               onHiddenChange={setHiddenIds}
               onDismiss={() => setActiveId(null)}
               onPageError={(err) => setPageError((cur) => cur ?? err)}
+              onPageChange={handlePageChange}
               renderPopover={renderHtmlPopover}
             />
           ) : version ? (

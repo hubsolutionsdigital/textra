@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, fileUrls } from '../api.js';
 import Modal from '../components/Modal.jsx';
 import ReviewViewer from '../components/ReviewViewer.jsx';
@@ -563,6 +563,7 @@ function FeedbackLog({ data, urls }) {
 function ClientScreen({ data, name, call, urls, token, openSubmit }) {
   const { screenId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { project, screens } = data;
   const index = screens.findIndex((s) => s.id === Number(screenId));
   const screen = screens[index];
@@ -625,6 +626,9 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
         key={screen.id}
         project={project}
         screen={screen}
+        screens={screens}
+        view={location.state?.view}
+        onOpenScreen={(target, view) => navigate(`../p/${target.id}`, { state: { view } })}
         version={screen.current_version}
         comments={data.comments}
         urls={urls}

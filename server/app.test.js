@@ -250,6 +250,12 @@ test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep el
   assert.equal(res.status, 302);
   res = await fetch(`${base}/sites/${v.site_token}/..%2f..%2fportal.db`);
   assert.equal(res.status, 404);
+  // a menu link to a page that wasn't uploaded gets a friendly page that still reports back to the portal
+  res = await fetch(`${base}/sites/${v.site_token}/~desktop/about.html`);
+  assert.equal(res.status, 404);
+  const missingPage = await res.text();
+  assert.match(missingPage, /isn’t part of this design yet/);
+  assert.match(missingPage, /\/__portal\/frame\.js/);
   res = await fetch(`${base}/sites/not-a-token/index.html`);
   assert.equal(res.status, 404);
   res = await fetch(`${base}/__portal/frame.js`);
