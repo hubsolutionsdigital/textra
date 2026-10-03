@@ -78,6 +78,11 @@
   // asking about the device (screen size, touch, user agent) rather than the window, so on Tablet/Mobile
   // we answer like a real one. This runs before the page's own scripts.
   var deviceMatch = /^review-portal:(desktop|laptop|tablet|mobile):(\d+)x(\d+)$/.exec(window.name || '');
+  var pathDevice = (/^\/sites\/[^/]+\/~(desktop|laptop|tablet|mobile)\//.exec(location.pathname) || [])[1];
+  if (!deviceMatch && pathDevice) {
+    // Opened outside the portal frame (or the name was lost): fall back to typical device sizes.
+    deviceMatch = [null, pathDevice, pathDevice === 'mobile' ? '390' : '768', pathDevice === 'mobile' ? '844' : '1024'];
+  }
   if (deviceMatch && (deviceMatch[1] === 'tablet' || deviceMatch[1] === 'mobile')) {
     var isPhone = deviceMatch[1] === 'mobile';
     var dw = +deviceMatch[2];
@@ -133,8 +138,10 @@
   }
 
   function pagePath() {
-    // /sites/<token>/sub/page.html -> sub/page.html
-    return location.pathname.split('/').slice(3).join('/');
+    // /sites/<token>/~mobile/sub/page.html -> sub/page.html
+    var parts = location.pathname.split('/').slice(3);
+    if (parts[0] && parts[0].charAt(0) === '~') parts.shift();
+    return parts.join('/');
   }
 
   // ---------- element anchors ----------

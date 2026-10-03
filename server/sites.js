@@ -185,6 +185,25 @@ function rewriteRootUrls(text, base) {
     .replace(/url\(\s*(["']?)\/(?!\/)/gi, `url($1${base}`);
 }
 
+const TRUE_MQ = '(min-width: 0px)';
+const FALSE_MQ = '(min-width: 999999px)';
+
+/**
+ * Inside the portal the page's real device is the reviewer's computer, so CSS written for phones
+ * (max-device-width, hover: none, pointer: coarse) would never apply. For Tablet/Mobile previews we
+ * rewrite those media features to describe the chosen device instead.
+ */
+export function rewriteDeviceQueries(text) {
+  return text
+    .replace(/\(\s*(min-|max-)?device-(width|height|aspect-ratio)\s*:/gi, (m, prefix, feature) => `(${prefix ?? ''}${feature}:`)
+    .replace(/\(\s*(?:any-)?pointer\s*:\s*coarse\s*\)/gi, TRUE_MQ)
+    .replace(/\(\s*(?:any-)?pointer\s*:\s*(?:fine|none)\s*\)/gi, FALSE_MQ)
+    .replace(/\(\s*(?:any-)?hover\s*:\s*none\s*\)/gi, TRUE_MQ)
+    .replace(/\(\s*(?:any-)?hover\s*:\s*hover\s*\)/gi, FALSE_MQ)
+    .replace(/\(\s*(?:any-)?pointer\s*\)/gi, TRUE_MQ)
+    .replace(/\(\s*(?:any-)?hover\s*\)/gi, FALSE_MQ);
+}
+
 const HELPER_TAG = '<script src="/__portal/frame.js"></script>';
 
 /** Adds the commenting helper to a page, as early as possible so it sees every click. */
@@ -198,7 +217,7 @@ function injectHelper(html) {
  * Serves one file of an uploaded site. Pages are delivered with a CSP sandbox (opaque origin) so their
  * scripts can never act as the portal or read its cookies, even if the URL is opened directly.
  */
-export function serveSiteFile(res, storedName, siteToken, relPath) {
+export function serveSiteFile(res, storedName, siteToken, relPath, device = null) {
   const dir = path.join(UPLOAD_DIR, storedName);
   let target = path.resolve(dir, decodeURIComponent(relPath || ''));
   if (target !== dir && !target.startsWith(dir + path.sep)) return res.status(404).end();
@@ -206,7 +225,10 @@ export function serveSiteFile(res, storedName, siteToken, relPath) {
   if (!fs.existsSync(target)) return res.status(404).type('text/plain').send('Not found');
 
   const ext = path.extname(target).toLowerCase();
-  const base = `/sites/${siteToken}/`;
+  // Keep the device segment in rewritten root-relative URLs so every asset is served for the same device.
+  const base = `/sites/${siteToken}/${device ? `~${device}/` : ''}`;
+  const touch = device === 'tablet' || device === 'mobile';
+  const adapt = (text) => (touch ? rewriteDeviceQueries(text) : text);
   res.setHeader('Content-Type', MIME[ext] ?? 'application/octet-stream');
   res.setHeader('Content-Security-Policy', 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-popups-to-escape-sandbox');
   // Sandboxed pages have an opaque ("null") origin, so fonts and module scripts need CORS to load.
@@ -215,8 +237,8 @@ export function serveSiteFile(res, storedName, siteToken, relPath) {
   res.setHeader('Cache-Control', 'private, max-age=300');
 
   if (ext === '.html' || ext === '.htm') {
-    return res.send(injectHelper(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base)));
+    return res.send(injectHelper(adapt(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base))));
   }
-  if (ext === '.css') return res.send(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base));
+  if (ext === '.css') return res.send(adapt(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base)));
   res.sendFile(target);
 }

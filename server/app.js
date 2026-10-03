@@ -1010,9 +1010,13 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   app.get(['/sites/:siteToken', '/sites/:siteToken/*rest'], (req, res) => {
     const v = db.prepare(`SELECT * FROM versions WHERE site_token = ? AND kind = 'html'`).get(req.params.siteToken);
     if (!v) return res.status(404).type('text/plain').send('Not found');
-    const rest = [].concat(req.params.rest ?? []).join('/');
-    if (!rest) return res.redirect(`/sites/${v.site_token}/${v.entry}`);
-    serveSiteFile(res, v.stored_name, v.site_token, rest);
+    const parts = [].concat(req.params.rest ?? []);
+    // Optional first segment "~mobile" etc.: the screen size being previewed (see serveSiteFile).
+    const device = /^~(desktop|laptop|tablet|mobile)$/.exec(parts[0] ?? '')?.[1] ?? null;
+    if (device) parts.shift();
+    const rest = parts.join('/');
+    if (!rest) return res.redirect(`/sites/${v.site_token}/${device ? `~${device}/` : ''}${v.entry}`);
+    serveSiteFile(res, v.stored_name, v.site_token, rest, device);
   });
 
   // ---------- errors ----------

@@ -223,6 +223,18 @@ test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep el
   assert.match(await res.text(), new RegExp(`href="/sites/${v.site_token}/css/app.css"`));
   res = await fetch(`${base}/sites/${v.site_token}/css/app.css`);
   assert.match(await res.text(), new RegExp(`url\\(/sites/${v.site_token}/img/a.png\\)`));
+  // Tablet/Mobile previews: device-specific CSS is rewritten to match the previewed device
+  res = await fetch(`${base}/sites/${v.site_token}/~mobile/css/app.css`);
+  assert.match(await res.text(), new RegExp(`url\\(/sites/${v.site_token}/~mobile/img/a.png\\)`));
+  const { rewriteDeviceQueries } = await import('./sites.js');
+  assert.equal(
+    rewriteDeviceQueries('@media only screen and (max-device-width: 768px) and (hover: none) and (pointer:coarse){}'),
+    '@media only screen and (max-width: 768px) and (min-width: 0px) and (min-width: 0px){}',
+  );
+  assert.equal(rewriteDeviceQueries('@media (hover: hover) and (pointer: fine){}'), '@media (min-width: 999999px) and (min-width: 999999px){}');
+  assert.equal(rewriteDeviceQueries('<meta name="viewport" content="width=device-width">'), '<meta name="viewport" content="width=device-width">');
+  res = await fetch(`${base}/sites/${v.site_token}/~desktop/index.html`);
+  assert.equal(res.status, 200);
   res = await fetch(`${base}/sites/${v.site_token}/img/a.png`);
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('access-control-allow-origin'), '*');
