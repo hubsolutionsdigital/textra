@@ -3,6 +3,7 @@ import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { api, fileUrls } from '../api.js';
 import Modal from '../components/Modal.jsx';
 import ReviewViewer from '../components/ReviewViewer.jsx';
+import GuidedTour from '../components/GuidedTour.jsx';
 import CommentCard from '../components/CommentCard.jsx';
 import { KINDS, isActionable, ordinal, roundFocus } from '../guidance.js';
 import { celebrate } from '../confetti.js';
@@ -219,6 +220,7 @@ function ClientHeader({ project, name, onChangeName, onSubmit, commentCount, rev
       {project.stage === 'review' && (
         <button
           className="btn btn-primary"
+          data-tour="submit"
           onClick={onSubmit}
           disabled={!ready}
           title={ready ? undefined : 'Review every page first (click “Done with this page” on each one)'}
@@ -241,7 +243,7 @@ function FocusCard({ project, note, compact }) {
   const focus = roundFocus(project.current_round, project.max_rounds);
   const [open, setOpen] = useState(!compact);
   return (
-    <div className="focus-card">
+    <div className="focus-card" data-tour="focus">
       <button className="focus-head" onClick={() => setOpen((o) => !o)}>
         <span>
           🎯 <strong>Focus this round:</strong> {focus.title}
@@ -549,8 +551,20 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
   const { project, screens } = data;
   const index = screens.findIndex((s) => s.id === Number(screenId));
   const screen = screens[index];
-  const hintKey = `review-hint:${token}:${project.current_round}`;
-  const [showHint, setShowHint] = useState(() => !storage.get(hintKey));
+  const isHtml = screen?.current_version?.kind === 'html';
+  // The walkthrough runs automatically the first time someone reviews a PDF page and an HTML page here.
+  const tourKey = `review-tour-steps:${token}:${isHtml ? 'html' : 'pdf'}`;
+  const [touring, setTouring] = useState(false);
+  useEffect(() => {
+    if (project.stage === 'review' && screen && !storage.get(tourKey)) {
+      const t = setTimeout(() => setTouring(true), 700); // let the design and controls render first
+      return () => clearTimeout(t);
+    }
+  }, [tourKey, project.stage, screen]);
+  const endTour = () => {
+    storage.set(tourKey, '1');
+    setTouring(false);
+  };
 
   if (!screen) {
     return (
@@ -569,11 +583,6 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
     (s) => !screenStatus(data, s, name).reviewed,
   );
 
-  const dismissHint = () => {
-    storage.set(hintKey, '1');
-    setShowHint(false);
-  };
-
   const markReviewed = async () => {
     await call('POST', `/screens/${screen.id}/reviewed`, { author_name: name, reviewed: true });
     if (nextScreen) navigate(`../p/${nextScreen.id}`);
@@ -589,21 +598,12 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
     if (device) fd.append('device', device);
     images.forEach((img, i) => fd.append('images', img, img.name || `screenshot-${i + 1}.png`));
     await call('POST', '/comments', fd);
-    dismissHint();
   };
 
   return (
     <div className="viewer-page client">
-      {showHint && reviewing && (
-        <div className="coach-hint" onClick={dismissHint}>
-          <span>
-            👆 Click anywhere on the design to leave a comment. Start with what you <strong>love</strong>!
-            {screen.current_version?.kind === 'html' && (
-              <> Switch to <strong>Interact</strong> to try menus, links and animations, and to other screen sizes.</>
-            )}
-          </span>
-          <button className="link-btn">Got it</button>
-        </div>
+      {touring && reviewing && (
+        <GuidedTour steps={reviewSteps({ isHtml, project, nextScreen })} onClose={endTour} />
       )}
       <ReviewViewer
         key={screen.id}
@@ -626,12 +626,17 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
             <span className="muted small">
               Page {index + 1} of {screens.length}
             </span>
+            {reviewing && (
+              <button className="btn btn-sm btn-ghost help-btn" onClick={() => setTouring(true)} title="Replay the walkthrough">
+                ❓ How to review
+              </button>
+            )}
           </>
         }
         sidebarTop={reviewing ? <FocusCard project={project} note={screen.note} compact={index > 0} /> : null}
         footer={
           reviewing ? (
-            <div className="sidebar-footer">
+            <div className="sidebar-footer" data-tour="done">
               {reviewed ? (
                 <>
                   <div className="reviewed-note">✓ You’ve marked this page as reviewed</div>
@@ -656,6 +661,102 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
       />
     </div>
   );
+}
+
+/** The in-page walkthrough. Steps point at elements marked data-tour="…"; missing ones are skipped. */
+function reviewSteps({ isHtml, project, nextScreen }) {
+  const focus = roundFocus(project.current_round, project.max_rounds);
+  return [
+    {
+      target: null,
+      title: '👋 A quick tour (about a minute)',
+      body: (
+        <p>
+          Here’s how to review this page and leave feedback. You can replay this anytime with <strong>❓ How to review</strong>{' '}
+          at the top.
+        </p>
+      ),
+    },
+    isHtml && {
+      target: 'devices',
+      title: '📱 Check every screen size',
+      body: (
+        <p>
+          This is the real, working design. Switch between <strong>Desktop, Laptop, Tablet and Mobile</strong> to see how it
+          adapts. Please look at least at Desktop and Mobile.
+        </p>
+      ),
+    },
+    isHtml && {
+      target: 'mode',
+      title: '💬 Comment or 👆 Interact',
+      body: (
+        <ul>
+          <li>
+            <strong>Comment</strong>: click anywhere on the design to pin feedback to that exact spot.
+          </li>
+          <li>
+            <strong>Interact</strong>: use it like a real website. Open menus, click buttons, scroll and watch the
+            animations.
+          </li>
+          <li>Switch back to Comment whenever you want to say something.</li>
+        </ul>
+      ),
+    },
+    {
+      target: 'canvas',
+      title: '🖱️ Click to leave a comment',
+      body: (
+        <>
+          <p>
+            {isHtml ? 'In Comment mode, click' : 'Click'} the exact spot you want to talk about. Then pick a reaction:
+          </p>
+          <ul>
+            <li>❤️ 👍 🎉 for things you like (please tell us these too!)</li>
+            <li>✏️ to suggest a change, or ❓ to ask a question</li>
+          </ul>
+          <p>You can paste a screenshot (⌘/Ctrl + V) to show an example.</p>
+        </>
+      ),
+    },
+    {
+      target: 'comments',
+      title: '🗂 Your comments',
+      body: (
+        <p>
+          Everything you say on this page is listed here; click one to jump to it.{' '}
+          {project.current_round > 1
+            ? '“Earlier rounds” shows your previous feedback and what the team changed.'
+            : 'You can remove a comment before you submit.'}
+        </p>
+      ),
+    },
+    {
+      target: 'focus',
+      title: `🎯 This round: ${focus.title}`,
+      body: <p>{focus.why} The tips here tell you what to look out for.</p>,
+    },
+    {
+      target: 'done',
+      title: '✅ Done with this page?',
+      body: (
+        <p>
+          When you’ve finished, click <strong>Done with this page</strong>
+          {nextScreen ? <> and we’ll take you to the next one, “{nextScreen.title}”.</> : '.'}
+        </p>
+      ),
+    },
+    {
+      target: 'submit',
+      title: '📨 Submit when every page is done',
+      body: (
+        <p>
+          This unlocks once every page is marked done. It sends all your feedback for round {project.current_round} to the
+          team in one go. Until then, you can add or remove comments freely.
+        </p>
+      ),
+    },
+  ].filter(Boolean);
 }
 
 function TourModal({ data, name, token }) {

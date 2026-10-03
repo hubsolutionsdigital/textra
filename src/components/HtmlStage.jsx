@@ -54,12 +54,14 @@ const HtmlStage = forwardRef(function HtmlStage(
     return () => ro.disconnect();
   }, []);
 
-  const pad = 24;
+  const pad = size.w && size.w < 600 ? 8 : 24; // tighter margins when reviewing on a phone
   // Every size has a fixed viewport (pages often size themselves from the height), shrunk to fit so the whole
   // screen is visible at once, the way it looks on the real device.
   const bezel = preset.bezel ? DEVICE_BEZEL * 2 : 0;
   const fitWidth = (size.w - pad * 2) / (preset.width + bezel);
-  const fitHeight = (size.h - pad * 2) / (preset.height + bezel);
+  // Only fit the height when there's room for it; in a short area (e.g. on a phone, under the toolbar) fill the
+  // width instead and let the reviewer scroll, rather than shrinking the device to a thumbnail.
+  const fitHeight = size.h >= 480 ? (size.h - pad * 2) / (preset.height + bezel) : Infinity;
   const scale = size.w ? Math.min(1, fitWidth, fitHeight) : 1;
   const frameHeight = preset.height ?? Math.max(400, (size.h - pad * 2) / scale);
   const frameLeft = Math.max(pad, (size.w - preset.width * scale) / 2);

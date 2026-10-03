@@ -1906,3 +1906,91 @@ label {
   margin-bottom: 16px;
   font-size: 0.9rem;
 }
+
+/* ---------- guided tour (spotlight walkthrough) ---------- */
+.tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+.tour-dim {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 27, 45, 0.55);
+}
+.tour-spotlight {
+  position: fixed;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(15, 27, 45, 0.55), 0 0 0 3px #fff;
+  transition: all 0.25s ease;
+  pointer-events: none;
+}
+.tour-card {
+  position: fixed;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 18px 18px 14px;
+  box-shadow: var(--shadow-lg);
+  transition: top 0.25s ease, left 0.25s ease;
+}
+.tour-card h3 {
+  margin: 4px 0 6px;
+  font-size: 1.05rem;
+}
+.tour-step {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.tour-body {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.tour-body p {
+  margin: 0 0 6px;
+}
+.tour-body ul {
+  margin: 4px 0 6px;
+  padding-left: 18px;
+}
+.tour-body li {
+  margin-bottom: 4px;
+}
+.tour-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.muted-link {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.tour-dots {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+  margin-top: 10px;
+}
+.tour-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.tour-dots span.done {
+  background: var(--primary-soft);
+}
+.tour-dots span.active {
+  background: var(--primary);
+  width: 16px;
+  border-radius: 99px;
+}
+
+.help-btn {
+  color: var(--primary);
+}

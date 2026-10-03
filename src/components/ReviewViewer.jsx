@@ -37,7 +37,10 @@ export default function ReviewViewer({
   // HTML prototypes
   const isHtml = version?.kind === 'html';
   const stageRef = useRef(null);
-  const [device, setDevice] = useState('desktop');
+  // Start at the reviewer's own kind of device: on a phone, a desktop preview would be a tiny thumbnail.
+  const [device, setDevice] = useState(() =>
+    window.innerWidth < 640 ? 'mobile' : window.innerWidth < 1024 ? 'tablet' : 'desktop',
+  );
   const [commentMode, setCommentMode] = useState(canComment);
   const [htmlDraft, setHtmlDraft] = useState(null);
   const [hiddenIds, setHiddenIds] = useState([]);
@@ -232,7 +235,7 @@ export default function ReviewViewer({
         </label>
         {isHtml && (
           <>
-            <div className="segmented" role="group" aria-label="Screen size">
+            <div className="segmented" role="group" aria-label="Screen size" data-tour="devices">
               {DEVICES.map((d) => (
                 <button
                   key={d.id}
@@ -248,7 +251,7 @@ export default function ReviewViewer({
               ))}
             </div>
             {canComment && (
-              <div className="segmented" role="group" aria-label="Mode">
+              <div className="segmented" role="group" aria-label="Mode" data-tour="mode">
                 <button
                   className={commentMode ? 'active' : ''}
                   onClick={() => setCommentMode(true)}
@@ -286,7 +289,7 @@ export default function ReviewViewer({
       </div>
 
       <div className="viewer-body">
-        <div className={`canvas-scroll ${canComment ? 'can-comment' : ''} ${isHtml ? 'is-html' : ''}`}>
+        <div className={`canvas-scroll ${canComment ? 'can-comment' : ''} ${isHtml ? 'is-html' : ''}`} data-tour="canvas">
           {isHtml && pageError && mode === 'agency' && (
             <div className="page-error" role="status">
               ⚠️ This prototype hit a script error in the portal: <code>{pageError.message}</code>
@@ -327,7 +330,7 @@ export default function ReviewViewer({
 
         <aside className="viewer-sidebar">
           {sidebarTop}
-          <div className="tabs">
+          <div className="tabs" data-tour="comments">
             <button className={tab === 'current' ? 'active' : ''} onClick={() => setTab('current')}>
               {liveRound ? `Round ${liveRound}` : 'Latest'} <span className="count">{live.length}</span>
             </button>
