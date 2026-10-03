@@ -29,7 +29,9 @@ export default function ProjectAdmin() {
     try {
       const { upload_warning: warning, ...bundle } = await api(method, `/api/projects/${projectId}${url}`, body);
       setData(bundle);
-      if (method === 'POST' && url.endsWith('/versions')) {
+      if (method === 'DELETE' && url.startsWith('/screens/')) {
+        setUploadWarnings([]); // the page they referred to is gone
+      } else if (method === 'POST' && url.endsWith('/versions')) {
         // A replacement upload supersedes earlier warnings (e.g. the zip that fixes a lone index.html).
         setUploadWarnings(warning ? [warning] : []);
       } else if (warning) {
@@ -290,6 +292,25 @@ function NextStep({ project, screens, comments, mutate }) {
 
 /** Shown after uploading an HTML page whose images, fonts or scripts weren't included in the upload. */
 function MissingFilesWarning({ warnings, onDismiss }) {
+  const filesMissing = warnings.some((w) => w.total > 0 || w.computerPaths.length > 0);
+  if (!filesMissing) {
+    // Only links to pages that aren't in the upload: worth knowing, not a problem.
+    return (
+      <div className="missing-files info" role="status">
+        <div className="row">
+          <span className="grow small">
+            ℹ️ Uploaded. Some links in the menu go to pages that aren’t part of this upload (
+            <span className="missing-list">{[...new Set(warnings.flatMap((w) => w.pages))].slice(0, 8).join(', ')}</span>
+            ). That’s fine if they aren’t designed yet; clients will see a “Not found” page if they click them in
+            Interact mode.
+          </span>
+          <button className="link-btn" onClick={onDismiss}>
+            Dismiss
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="missing-files" role="alert">
       <div className="row">
@@ -315,6 +336,11 @@ function MissingFilesWarning({ warnings, onDismiss }) {
             <>
               It also links to files on your computer (<code>{w.computerPaths[0]}</code>), which won’t work online.{' '}
             </>
+          )}
+          {w.pages.length > 0 && (
+            <span className="muted">
+              Menu links to pages not in the upload ({w.pages.slice(0, 5).join(', ')}) are fine if they aren’t designed yet.
+            </span>
           )}
         </div>
       ))}

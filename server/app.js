@@ -441,7 +441,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
 
   const uploadWarning = (fileName, result) => {
     const m = result?.missing;
-    if (!m || (!m.total && !m.computerPaths.length)) return undefined;
+    if (!m || (!m.total && !m.computerPaths.length && !m.pages.length)) return undefined;
     return { file: fileName, ...m };
   };
 

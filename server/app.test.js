@@ -181,6 +181,8 @@ test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep el
          <img src="images/card-1.webp"><img src="https://cdn.example.com/x.png"><img src="data:image/png;base64,AA">
          <a href="#top">top</a><img src="file:///Users/susan/Downloads/logo.png">
          <script>const cards = ['images/card-2.jpg', "images/card-3.jpg"]; const tpl = \`img/\${n}.png\`;</script>
+         <svg><circle fill="url(#g)"/></svg><div style="background:url('data:image/svg+xml,%3Crect fill=%22url(%23n)%22/%3E')"></div>
+         <a href="about.html">About</a>
          </body></html>`,
       ],
       { type: 'text/html' },
@@ -192,6 +194,7 @@ test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep el
   assert.deepEqual(r.data.upload_warning.files, ['images/card-1.webp', 'images/card-2.jpg', 'images/card-3.jpg', 'img/hero.jpg']);
   assert.equal(r.data.upload_warning.total, 4);
   assert.deepEqual(r.data.upload_warning.computerPaths, ['file:///Users/susan/Downloads/logo.png']);
+  assert.deepEqual(r.data.upload_warning.pages, ['about.html'], 'missing pages reported separately');
   await api('DELETE', `/api/projects/${projectId}/screens/${r.data.screens.at(-1).id}`);
   assert.equal(single.title, 'Landing');
   assert.equal(single.current_version.kind, 'html');

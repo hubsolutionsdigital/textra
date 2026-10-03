@@ -121,6 +121,7 @@ function listFiles(dir, base = '') {
  */
 export function findMissingFiles(dir, limit = 30) {
   const missing = new Set();
+  const missingPages = new Set();
   const external = new Set();
   for (const rel of listFiles(dir).filter((f) => SCANNED.test(f))) {
     const text = fs.readFileSync(path.join(dir, rel), 'utf8');
@@ -140,17 +141,23 @@ export function findMissingFiles(dir, limit = 30) {
         } catch {
           decoded = ref;
         }
+        // In-page references such as SVG gradients: url(#g), or url(%23g) inside an embedded SVG.
+        if (decoded.startsWith('#')) continue;
         const target = decoded.startsWith('/')
           ? path.join(dir, decoded)
           : path.resolve(dir, path.dirname(rel), decoded);
         if (!target.startsWith(dir + path.sep)) continue;
-        if (!fs.existsSync(target)) missing.add(path.relative(dir, target).split(path.sep).join('/'));
+        if (fs.existsSync(target)) continue;
+        const name = path.relative(dir, target).split(path.sep).join('/');
+        // Links to pages that aren't designed yet are normal in a prototype; report them separately.
+        (/\.html?$/i.test(name) ? missingPages : missing).add(name);
       }
     }
   }
   return {
     files: [...missing].sort().slice(0, limit),
     total: missing.size,
+    pages: [...missingPages].sort().slice(0, limit),
     computerPaths: [...external].slice(0, 5),
   };
 }
