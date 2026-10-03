@@ -175,8 +175,8 @@ test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep el
   fd = new FormData();
   fd.append('file', new Blob(['<html><head><style>body{cursor:none}</style></head><body></body></html>'], { type: 'text/html' }), 'cursor.html');
   r = await api('POST', `/api/projects/${projectId}/screens`, fd);
-  res = await fetch(`${base}/sites/${r.data.screens.at(-1).current_version.site_token}/index.html`);
-  assert.match(await res.text(), /<script src="\/__portal\/frame\.js" data-custom-cursor="1"><\/script>/);
+  const cursorPage = await fetch(`${base}/sites/${r.data.screens.at(-1).current_version.site_token}/index.html`);
+  assert.match(await cursorPage.text(), /<script src="\/__portal\/frame\.js" data-custom-cursor="1"><\/script>/);
   await api('DELETE', `/api/projects/${projectId}/screens/${r.data.screens.at(-1).id}`);
 
   // a lone index.html whose images live next to it on the designer's computer
