@@ -73,6 +73,52 @@
     } catch (err) {}
   }
 
+  // ---------- device emulation ----------
+  // The portal names the iframe "review-portal:<device>:<width>x<height>". Pages often decide layout by
+  // asking about the device (screen size, touch, user agent) rather than the window, so on Tablet/Mobile
+  // we answer like a real one. This runs before the page's own scripts.
+  var deviceMatch = /^review-portal:(desktop|laptop|tablet|mobile):(\d+)x(\d+)$/.exec(window.name || '');
+  if (deviceMatch && (deviceMatch[1] === 'tablet' || deviceMatch[1] === 'mobile')) {
+    var isPhone = deviceMatch[1] === 'mobile';
+    var dw = +deviceMatch[2];
+    var dh = +deviceMatch[3];
+    var ua = isPhone
+      ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
+      : 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+    var define = function (obj, prop, value) {
+      try {
+        Object.defineProperty(obj, prop, { get: function () { return value; }, configurable: true });
+      } catch (e) {}
+    };
+    define(screen, 'width', dw);
+    define(screen, 'height', dh);
+    define(screen, 'availWidth', dw);
+    define(screen, 'availHeight', dh);
+    define(navigator, 'userAgent', ua);
+    define(navigator, 'platform', isPhone ? 'iPhone' : 'iPad');
+    define(navigator, 'maxTouchPoints', 5);
+    if (!('ontouchstart' in window)) {
+      try {
+        window.ontouchstart = null;
+      } catch (e) {}
+    }
+    // Answer touch-related media queries like a touch screen: no hover, coarse pointer.
+    var realMatchMedia = window.matchMedia.bind(window);
+    var TRUE_Q = '(min-width: 0px)';
+    var FALSE_Q = '(min-width: 999999px)';
+    window.matchMedia = function (query) {
+      var q = String(query)
+        .replace(/\(\s*(any-)?pointer\s*:\s*coarse\s*\)/gi, TRUE_Q)
+        .replace(/\(\s*(any-)?pointer\s*:\s*(fine|none)\s*\)/gi, FALSE_Q)
+        .replace(/\(\s*(any-)?hover\s*:\s*none\s*\)/gi, TRUE_Q)
+        .replace(/\(\s*(any-)?hover\s*:\s*hover\s*\)/gi, FALSE_Q)
+        .replace(/\(\s*(any-)?(pointer|hover)\s*\)/gi, function (m, any, f) {
+          return f.toLowerCase() === 'pointer' ? TRUE_Q : FALSE_Q;
+        });
+      return realMatchMedia(q);
+    };
+  }
+
   if (window.parent === window || window.__reviewPortal) return;
   window.__reviewPortal = true;
 

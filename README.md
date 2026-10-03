@@ -45,6 +45,9 @@ approval and a "development has started" hand-off.
 
 - Clients switch between **Desktop (1440px), Laptop (1280px), Tablet (768px) and Mobile (390px)**, and the live page
   re-flows at that width.
+- Switching screen size reloads the prototype at that size, because many pages size their layout once when they load.
+  On Tablet and Mobile the page sees a matching device: screen size, touch support, a mobile user agent, and
+  `(pointer: coarse)` / `(hover: none)` in `matchMedia`. CSS media queries on hover/pointer still follow your computer.
 - **Comment / Interact** switch: in Comment mode, a click pins a comment to the exact element. In Interact mode, menus,
   sliders, links and forms work normally.
 - Pins are anchored to the element (plus the click position inside it), so they follow scrolling, sticky headers and

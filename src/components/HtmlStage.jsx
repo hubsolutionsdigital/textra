@@ -38,6 +38,7 @@ const HtmlStage = forwardRef(function HtmlStage(
   const frameRef = useRef(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [page, setPage] = useState(null);
+  const [loadCount, setLoadCount] = useState(0); // bumps on every page load inside the frame, incl. reloads
   const [hover, setHover] = useState(null); // { id, x, y } in iframe px
   const [anchorPos, setAnchorPos] = useState(null); // where the active pin / draft popover sits
   const preset = DEVICES.find((d) => d.id === device) ?? DEVICES[0];
@@ -62,8 +63,8 @@ const HtmlStage = forwardRef(function HtmlStage(
   useEffect(() => {
     post({ type: 'pins', pins: visiblePins.map((p) => ({ ...p, active: p.id === activeId })) });
   });
-  useEffect(() => post({ type: 'mode', mode: commentMode ? 'comment' : 'browse' }), [commentMode, page]);
-  useEffect(() => post({ type: 'draft', anchor: draftAnchor }), [draftAnchor, page]);
+  useEffect(() => post({ type: 'mode', mode: commentMode ? 'comment' : 'browse' }), [commentMode, loadCount]);
+  useEffect(() => post({ type: 'draft', anchor: draftAnchor }), [draftAnchor, loadCount]);
 
   useImperativeHandle(ref, () => ({ focus: (id) => post({ type: 'focus', id }) }));
 
@@ -73,6 +74,7 @@ const HtmlStage = forwardRef(function HtmlStage(
       const m = e.data;
       if (m.type === 'ready') {
         setPage(m.page);
+        setLoadCount((n) => n + 1);
         setHover(null);
         setAnchorPos(null);
       } else if (m.type === 'click') {
@@ -113,9 +115,12 @@ const HtmlStage = forwardRef(function HtmlStage(
         className={`device-frame device-${preset.id}`}
         style={{ left: frameLeft, top: pad, width: preset.width * scale, height: frameHeight * scale }}
       >
+        {/* Reload on device change: many pages measure the screen once when they load. The name tells the
+            injected helper which device to emulate. */}
         <iframe
           ref={frameRef}
-          key={src}
+          key={`${src}|${preset.id}`}
+          name={`review-portal:${preset.id}:${preset.width}x${preset.height ?? Math.round(frameHeight)}`}
           src={src}
           title="Design prototype"
           sandbox="allow-scripts allow-forms allow-popups allow-modals allow-popups-to-escape-sandbox"
