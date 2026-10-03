@@ -29,7 +29,8 @@ approval and a "development has started" hand-off.
 - A checklist of pages, a progress bar, and **Done with this page → next page** keep them moving.
 - The first time they open a page, a **step-by-step walkthrough** highlights each control in turn: screen sizes,
   Comment vs Interact, how to comment, the comment list, this round's focus, "Done with this page" and Submit.
-  It can be replayed anytime with **❓ How to review**. On a phone or tablet, the design opens at that size.
+  A floating **?** button (bottom-left) brings it back any time, and on the pages overview it reopens the welcome
+  guide. On a phone or tablet, the design opens at that size.
 - Click anywhere on the design to comment. The comment popup leads with positive presets
   (❤️ Love it · 👍 Like this · 🎉 This is great) before ✏️ *Suggest a change* / ❓ *Ask a question*.
   Screenshots can be pasted with Ctrl/⌘+V or attached.

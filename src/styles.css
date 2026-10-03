@@ -1991,6 +1991,53 @@ label {
   border-radius: 99px;
 }
 
-.help-btn {
-  color: var(--primary);
+/* floating "?" that reopens the guide; bottom-left so it doesn't collide with chat bubbles in designs */
+.help-fab {
+  position: fixed;
+  left: 18px;
+  bottom: 18px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  font-size: 1.05rem;
+  box-shadow: 0 6px 18px rgba(15, 27, 45, 0.3);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+.help-fab:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+.help-fab-label {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: max-width 0.25s ease, margin 0.25s ease;
+}
+.help-fab:hover .help-fab-label,
+.help-fab:focus-visible .help-fab-label {
+  max-width: 220px;
+  margin-left: 8px;
+}
+@media (max-width: 900px) {
+  .help-fab {
+    left: 12px;
+    bottom: 12px;
+  }
+  /* on phones the comments panel (with "Done") sits at the bottom; float above it */
+  .help-fab.in-viewer {
+    bottom: calc(42dvh + 12px);
+  }
 }

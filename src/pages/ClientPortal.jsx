@@ -19,6 +19,7 @@ export default function ClientPortal() {
   const [name, setName] = useState(() => storage.get(`review-name:${token}`) || '');
   const [submitOpen, setSubmitOpen] = useState(null); // null | 'manual' | 'idle'
   const [celebration, setCelebration] = useState(null);
+  const [welcomeReplay, setWelcomeReplay] = useState(0); // bumps when the reviewer asks for the welcome guide again
 
   const load = useCallback(
     () =>
@@ -86,6 +87,7 @@ export default function ClientPortal() {
     call,
     urls: fileUrls({ token }),
     openSubmit: () => setSubmitOpen('manual'),
+    replayWelcome: () => setWelcomeReplay((n) => n + 1),
   };
 
   return (
@@ -106,7 +108,9 @@ export default function ClientPortal() {
         <Route index element={<Overview {...ctx} />} />
         <Route path="p/:screenId" element={<ClientScreen {...ctx} />} />
       </Routes>
-      {project.stage === 'review' && <TourModal key={project.current_round} {...ctx} />}
+      {project.stage === 'review' && (
+        <TourModal key={`${project.current_round}-${welcomeReplay}`} force={welcomeReplay > 0} {...ctx} />
+      )}
       {submitOpen && project.stage === 'review' && (
         <SubmitModal
           {...ctx}
@@ -276,7 +280,7 @@ function screenStatus(data, screen, name) {
   return { reviewed, count };
 }
 
-function Overview({ data, name, urls, openSubmit }) {
+function Overview({ data, name, urls, openSubmit, replayWelcome }) {
   const { project, screens } = data;
   const navigate = useNavigate();
 
@@ -380,7 +384,18 @@ function Overview({ data, name, urls, openSubmit }) {
       </div>
 
       <FeedbackLog data={data} urls={urls} />
+      {reviewing && <HelpButton onClick={replayWelcome} label="Show the guide again" />}
     </main>
+  );
+}
+
+/** Floating "?" in the corner of every review screen, so the guide is always one click away. */
+function HelpButton({ onClick, label, inViewer }) {
+  return (
+    <button className={`help-fab ${inViewer ? 'in-viewer' : ''}`} onClick={onClick} aria-label={label} title={label}>
+      <span aria-hidden>?</span>
+      <span className="help-fab-label">{label}</span>
+    </button>
   );
 }
 
@@ -605,6 +620,7 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
       {touring && reviewing && (
         <GuidedTour steps={reviewSteps({ isHtml, project, nextScreen })} onClose={endTour} />
       )}
+      {reviewing && !touring && <HelpButton onClick={() => setTouring(true)} label="How to review this page" inViewer />}
       <ReviewViewer
         key={screen.id}
         project={project}
@@ -626,11 +642,7 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
             <span className="muted small">
               Page {index + 1} of {screens.length}
             </span>
-            {reviewing && (
-              <button className="btn btn-sm btn-ghost help-btn" onClick={() => setTouring(true)} title="Replay the walkthrough">
-                ❓ How to review
-              </button>
-            )}
+
           </>
         }
         sidebarTop={reviewing ? <FocusCard project={project} note={screen.note} compact={index > 0} /> : null}
@@ -672,8 +684,8 @@ function reviewSteps({ isHtml, project, nextScreen }) {
       title: '👋 A quick tour (about a minute)',
       body: (
         <p>
-          Here’s how to review this page and leave feedback. You can replay this anytime with <strong>❓ How to review</strong>{' '}
-          at the top.
+          Here’s how to review this page and leave feedback. Forgot something later? Click the round{' '}
+          <strong>?</strong> button in the bottom-left corner to see this again.
         </p>
       ),
     },
@@ -759,10 +771,10 @@ function reviewSteps({ isHtml, project, nextScreen }) {
   ].filter(Boolean);
 }
 
-function TourModal({ data, name, token }) {
+function TourModal({ data, name, token, force }) {
   const { project, screens } = data;
   const key = `review-tour:${token}:${project.current_round}`;
-  const [step, setStep] = useState(() => (storage.get(key) ? -1 : 0));
+  const [step, setStep] = useState(() => (force || !storage.get(key) ? 0 : -1));
   const navigate = useNavigate();
   const focus = roundFocus(project.current_round, project.max_rounds);
   if (step < 0 || screens.length === 0) return null;
