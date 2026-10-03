@@ -50,7 +50,10 @@ approval and a "development has started" hand-off.
 - Pins are anchored to the element (plus the click position inside it), so they follow scrolling, sticky headers and
   animations, and still land in the right place at other screen sizes. Each comment records the screen size it was left
   on. If its element isn't visible at the current size, the sidebar says so, and clicking it jumps to that size.
-- Multi-page zips work: links between pages navigate inside the viewer, and pins only show on their own page.
+- **Multi-page zips become one review page per HTML file.** Top-level pages are ordered by the home page's menu,
+  and `index.html` is named "Home". All of them share the one upload, so images aren't duplicated. Uploading a new
+  version of the zip on any of those pages updates them all, and any new HTML page becomes a new review page. Links
+  between pages still work inside the viewer, and pins only show on their own page.
 - Safety: prototypes are served from `/sites/<random token>/` with a `Content-Security-Policy: sandbox` header and a
   sandboxed iframe (no same-origin), so their scripts can't read the portal, its cookies or other projects. Root-relative
   URLs (`/css/app.css`) are rewritten to the prototype's folder. Zips with `..` or absolute paths are rejected.

@@ -439,6 +439,90 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     return {};
   };
 
+  /** "index.html" -> "Home", "play-area.html" -> "Play area". */
+  const pageTitle = (file) => {
+    const base = file.replace(/\.html?$/i, '');
+    if (/^(index|home)$/i.test(base)) return 'Home';
+    const t = base.replace(/[-_]+/g, ' ').trim();
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  };
+
+  const createScreen = (p, title, note = '') => {
+    const pos = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS n FROM screens WHERE project_id = ?').get(p.id).n;
+    return Number(
+      db.prepare('INSERT INTO screens (project_id, title, note, position) VALUES (?, ?, ?, ?)').run(p.id, title, note, pos)
+        .lastInsertRowid,
+    );
+  };
+
+  const insertSiteVersion = (p, screenId, fileName, site, entry) =>
+    db
+      .prepare(
+        `INSERT INTO versions (screen_id, round, original_name, stored_name, kind, site_token, entry)
+         VALUES (?, ?, ?, ?, 'html', ?, ?)`,
+      )
+      .run(screenId, Math.min(uploadRound(p), p.max_rounds + 1), fileName, site.storedName, token(18), entry);
+
+  const latestVersion = (screenId) => db.prepare('SELECT * FROM versions WHERE screen_id = ? ORDER BY id DESC LIMIT 1').get(screenId);
+
+  /** Runs fn in a transaction; if it fails, deletes the site folder that was just unpacked. */
+  const withSite = (site, fn) => {
+    try {
+      return tx(db, fn);
+    } catch (err) {
+      removeStored(site.storedName);
+      throw err;
+    }
+  };
+
+  /**
+   * New version of an HTML page. Pages that came from the same upload (same stored site) are updated
+   * together, matched by file name; pages new in this upload are added as new review pages.
+   */
+  const replaceSite = (p, target, file) => {
+    const site = storeSite(file);
+    const fileName = file.originalname.slice(0, 200);
+    const current = latestVersion(target.id);
+    const siblings =
+      current?.kind === 'html'
+        ? q
+            .screens.all(p.id)
+            .map((sc) => ({ screen: sc, version: latestVersion(sc.id) }))
+            .filter(({ version }) => version?.stored_name === current.stored_name)
+        : [{ screen: target, version: current }];
+    const updated = [];
+    const updatedIds = new Set();
+    const added = [];
+    withSite(site, () => {
+      const claimed = new Set();
+      for (const { screen, version } of siblings) {
+        if (version?.kind === 'html' && site.pages.includes(version.entry) && !claimed.has(version.entry)) {
+          insertSiteVersion(p, screen.id, fileName, site, version.entry);
+          claimed.add(version.entry);
+          updated.push(screen.title);
+          updatedIds.add(screen.id);
+        }
+      }
+      if (!updatedIds.has(target.id)) {
+        const entry = site.pages.find((pg) => !claimed.has(pg)) ?? site.entry;
+        insertSiteVersion(p, target.id, fileName, site, entry);
+        claimed.add(entry);
+        updated.push(target.title);
+      }
+      if (site.pages.length > 1) {
+        for (const page of site.pages.filter((pg) => !claimed.has(pg))) {
+          insertSiteVersion(p, createScreen(p, pageTitle(page)), fileName, site, page);
+          added.push(pageTitle(page));
+        }
+      }
+    });
+    const round = Math.min(uploadRound(p), p.max_rounds + 1);
+    const label = round > p.max_rounds ? 'final version' : `round ${round} version`;
+    let note = `New ${label} from ${fileName}: updated ${updated.join(', ')}`;
+    if (added.length) note += `; added new page${added.length === 1 ? '' : 's'} ${added.join(', ')}`;
+    return { note: `${note}.`, site };
+  };
+
   const uploadWarning = (fileName, result) => {
     const m = result?.missing;
     if (!m || (!m.total && !m.computerPaths.length && !m.pages.length)) return undefined;
@@ -450,6 +534,31 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     if (p.stage === 'approved') fail(409, 'This project is already approved');
     const title = cleanName(req.body.title) || cleanName(req.file?.originalname?.replace(/\.(pdf|html?|zip)$/i, ''));
     if (!title) fail(400, 'Give the page a title');
+    const fileName = req.file?.originalname?.slice(0, 200);
+
+    // A zip with several pages becomes one review page per HTML file, all sharing the same upload.
+    if (req.file && isZipName(fileName)) {
+      const site = storeSite(req.file);
+      if (site.pages.length > 1) {
+        withSite(site, () => {
+          for (const page of site.pages) insertSiteVersion(p, createScreen(p, pageTitle(page)), fileName, site, page);
+        });
+        const titles = site.pages.map(pageTitle);
+        logEvent(p, req.user.name, 'screen_added', `${fileName} added as ${titles.length} pages: ${titles.join(', ')}`);
+        return res.json({
+          ...projectBundle(q.project.get(p.id), { forClient: false }),
+          upload_warning: uploadWarning(fileName, site),
+          upload_note: `${fileName} has ${titles.length} pages, so it was added as ${titles.length} review pages: ${titles.join(', ')}.`,
+        });
+      }
+      withSite(site, () => insertSiteVersion(p, createScreen(p, title, String(req.body.note ?? '').slice(0, 1000)), fileName, site, site.entry));
+      logEvent(p, req.user.name, 'screen_added', `Page "${title}" added`);
+      return res.json({
+        ...projectBundle(q.project.get(p.id), { forClient: false }),
+        upload_warning: uploadWarning(fileName, site),
+      });
+    }
+
     const result = tx(db, () => {
       const pos = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS n FROM screens WHERE project_id = ?').get(p.id).n;
       const { lastInsertRowid } = db
@@ -492,7 +601,9 @@ export function createApp(db, { mailer = createMailer() } = {}) {
         .all(s.id),
     );
     db.prepare('DELETE FROM screens WHERE id = ?').run(s.id);
-    for (const f of files) removeStored(f.stored_name);
+    // Pages split from one zip share its folder; only remove it once no page uses it.
+    const stillUsed = db.prepare('SELECT 1 FROM versions WHERE stored_name = ? LIMIT 1');
+    for (const f of files) if (!stillUsed.get(f.stored_name)) removeStored(f.stored_name);
     logEvent(p, req.user.name, 'screen_removed', `Page "${s.title}" removed`);
     res.json(projectBundle(q.project.get(p.id), { forClient: false }));
   });
@@ -505,6 +616,16 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       const p = ownedProject(req);
       if (p.stage === 'approved') fail(409, 'This project is already approved');
       const s = q.screen.get(Number(req.params.screenId), p.id) ?? fail(404, 'Page not found');
+      const fileName = req.file?.originalname?.slice(0, 200) ?? '';
+      if (req.file && (isZipName(fileName) || isHtmlName(fileName))) {
+        const { note, site } = replaceSite(p, s, req.file);
+        logEvent(p, req.user.name, 'version_uploaded', note);
+        return res.json({
+          ...projectBundle(q.project.get(p.id), { forClient: false }),
+          upload_warning: uploadWarning(fileName, site),
+          upload_note: note,
+        });
+      }
       const result = addVersion(p, s.id, req.file);
       const round = Math.min(uploadRound(p), p.max_rounds + 1);
       const label = round > p.max_rounds ? 'final version' : `round ${round} version`;

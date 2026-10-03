@@ -285,3 +285,60 @@ test('sign-ups close after the first account unless the email domain is allowed'
     srv.close();
   }
 });
+
+test('a zip with several pages becomes one review page per HTML file, updated together', async () => {
+  const { zipSync, strToU8 } = await import('fflate');
+  await api('POST', '/api/auth/register', { email: 'split@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Trinax', notify_emails: 'pm@studio.test' });
+  const projectId = r.data.project.id;
+  const nav = '<a href="play.html">Play</a><a href="reward.html">Reward</a><a href="capture.html">Capture</a>';
+  const site = (label) =>
+    zipSync({
+      'TRINAX GO! - Website 3/index.html': strToU8(`<html><body>${nav}<img src="images/a.png">${label}</body></html>`),
+      'TRINAX GO! - Website 3/play.html': strToU8(`<html><body>${nav}play ${label}</body></html>`),
+      'TRINAX GO! - Website 3/capture.html': strToU8(`<html><body>${nav}capture</body></html>`),
+      'TRINAX GO! - Website 3/reward.html': strToU8(`<html><body>${nav}reward</body></html>`),
+      'TRINAX GO! - Website 3/images/a.png': new Uint8Array([137, 80, 78, 71]),
+      'TRINAX GO! - Website 3/partials/footer.html': strToU8('<footer></footer>'),
+      '__MACOSX/TRINAX GO! - Website 3/._index.html': strToU8('junk'),
+    });
+
+  let fd = new FormData();
+  fd.append('title', 'TRINAX GO! - Website 3');
+  fd.append('file', new Blob([site('v1')], { type: 'application/zip' }), 'TRINAX GO! - Website 3.zip');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.deepEqual(
+    r.data.screens.map((s) => [s.title, s.current_version.entry]),
+    [['Home', 'index.html'], ['Play', 'play.html'], ['Reward', 'reward.html'], ['Capture', 'capture.html']],
+    'menu order, nested partials ignored',
+  );
+  assert.match(r.data.upload_note, /added as 4 review pages: Home, Play, Reward, Capture/);
+  const stored = new Set(r.data.screens.map((s) => s.current_version.stored_name));
+  assert.equal(stored.size, 1, 'pages share one upload');
+  const tokens = new Set(r.data.screens.map((s) => s.current_version.site_token));
+  assert.equal(tokens.size, 4, 'each page has its own link');
+  let page = await fetch(`${base}/sites/${r.data.screens[1].current_version.site_token}/play.html`);
+  assert.match(await page.text(), /play v1/);
+
+  // new version uploaded on one page updates all four, and adds pages that are new in the zip
+  const play = r.data.screens[1];
+  const zip2 = site('v2');
+  const { unzipSync } = await import('fflate');
+  const withNew = zipSync({ ...unzipSync(zip2), 'TRINAX GO! - Website 3/interact.html': strToU8('<html>interact</html>') });
+  fd = new FormData();
+  fd.append('file', new Blob([withNew], { type: 'application/zip' }), 'TRINAX v2.zip');
+  r = await api('POST', `/api/projects/${projectId}/screens/${play.id}/versions`, fd);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.screens.length, 5);
+  assert.deepEqual(r.data.screens.map((s) => s.versions.length), [2, 2, 2, 2, 1]);
+  assert.equal(r.data.screens[4].title, 'Interact');
+  assert.match(r.data.upload_note, /updated .*Home.*; added new page Interact/);
+  page = await fetch(`${base}/sites/${r.data.screens[1].current_version.site_token}/play.html`);
+  assert.match(await page.text(), /play v2/);
+
+  // deleting one page keeps the shared files for the others
+  r = await api('DELETE', `/api/projects/${projectId}/screens/${r.data.screens[0].id}`);
+  page = await fetch(`${base}/sites/${r.data.screens[0].current_version.site_token}/play.html`);
+  assert.equal(page.status, 200);
+});

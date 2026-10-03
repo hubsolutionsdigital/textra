@@ -53,6 +53,20 @@ function pickEntry(files) {
 }
 
 /**
+ * The site's top-level pages (each becomes its own review page), in the order the entry page's links
+ * mention them, so the client's checklist follows the site's own menu. Nested HTML (partials,
+ * components) is ignored.
+ */
+function orderPages(dir, names, entry) {
+  const pages = names.filter((n) => !n.includes('/') && isHtmlName(n));
+  if (!pages.includes(entry)) return [entry];
+  const html = fs.readFileSync(path.join(dir, entry), 'utf8');
+  const linked = [...html.matchAll(/href\s*=\s*["']\.?\/?([^"'#?/]+\.html?)/gi)].map((m) => m[1]);
+  const rank = (n) => (n === entry ? -1 : linked.includes(n) ? linked.indexOf(n) : 1000);
+  return pages.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
+/**
  * Stores an uploaded .html file or .zip of a static site under uploads/sites/<random>/.
  * Returns the stored folder name (relative to UPLOAD_DIR) and the entry page path within it.
  */
@@ -63,7 +77,7 @@ export function storeSite(file) {
     if (isHtmlName(file.originalname)) {
       fs.mkdirSync(dir, { recursive: true });
       fs.copyFileSync(file.path, path.join(dir, 'index.html'));
-      return { storedName: `sites/${id}`, entry: 'index.html', missing: findMissingFiles(dir) };
+      return { storedName: `sites/${id}`, entry: 'index.html', pages: ['index.html'], missing: findMissingFiles(dir) };
     }
     let entries;
     try {
@@ -91,7 +105,8 @@ export function storeSite(file) {
       fs.writeFileSync(target, entries[name]);
     }
     names = names.map((n) => n.slice(strip.length));
-    return { storedName: `sites/${id}`, entry: pickEntry(names), missing: findMissingFiles(dir) };
+    const entry = pickEntry(names);
+    return { storedName: `sites/${id}`, entry, pages: orderPages(dir, names, entry), missing: findMissingFiles(dir) };
   } catch (err) {
     fs.rmSync(dir, { recursive: true, force: true });
     throw err;

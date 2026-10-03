@@ -23,12 +23,18 @@ export default function ProjectAdmin() {
 
   /** Runs a mutating request that returns the fresh project bundle. */
   const [uploadWarnings, setUploadWarnings] = useState([]);
+  const [uploadNote, setUploadNote] = useState('');
 
   const mutate = async (method, url, body) => {
     setError('');
     try {
-      const { upload_warning: warning, ...bundle } = await api(method, `/api/projects/${projectId}${url}`, body);
+      const { upload_warning: warning, upload_note: note, ...bundle } = await api(
+        method,
+        `/api/projects/${projectId}${url}`,
+        body,
+      );
       setData(bundle);
+      if (note) setUploadNote(note);
       if (method === 'DELETE' && url.startsWith('/screens/')) {
         setUploadWarnings([]); // the page they referred to is gone
       } else if (method === 'POST' && url.endsWith('/versions')) {
@@ -81,6 +87,14 @@ export default function ProjectAdmin() {
           ))}
         </div>
 
+        {tab === 'pages' && uploadNote && (
+          <div className="upload-note" role="status">
+            <span className="grow">✅ {uploadNote}</span>
+            <button className="link-btn" onClick={() => setUploadNote('')}>
+              Dismiss
+            </button>
+          </div>
+        )}
         {tab === 'pages' && uploadWarnings.length > 0 && (
           <MissingFilesWarning warnings={uploadWarnings} onDismiss={() => setUploadWarnings([])} />
         )}
