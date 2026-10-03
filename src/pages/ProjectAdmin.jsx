@@ -22,10 +22,19 @@ export default function ProjectAdmin() {
   }, [load]);
 
   /** Runs a mutating request that returns the fresh project bundle. */
+  const [uploadWarnings, setUploadWarnings] = useState([]);
+
   const mutate = async (method, url, body) => {
     setError('');
     try {
-      setData(await api(method, `/api/projects/${projectId}${url}`, body));
+      const { upload_warning: warning, ...bundle } = await api(method, `/api/projects/${projectId}${url}`, body);
+      setData(bundle);
+      if (method === 'POST' && url.endsWith('/versions')) {
+        // A replacement upload supersedes earlier warnings (e.g. the zip that fixes a lone index.html).
+        setUploadWarnings(warning ? [warning] : []);
+      } else if (warning) {
+        setUploadWarnings((cur) => [...cur.filter((w) => w.file !== warning.file), warning]);
+      }
     } catch (err) {
       setError(err.message);
       throw err;
@@ -70,6 +79,9 @@ export default function ProjectAdmin() {
           ))}
         </div>
 
+        {tab === 'pages' && uploadWarnings.length > 0 && (
+          <MissingFilesWarning warnings={uploadWarnings} onDismiss={() => setUploadWarnings([])} />
+        )}
         {tab === 'pages' && <PagesTab project={project} screens={screens} comments={comments} mutate={mutate} />}
         {tab === 'feedback' && (
           <FeedbackTab
@@ -274,6 +286,46 @@ function NextStep({ project, screens, comments, mutate }) {
     default:
       return null;
   }
+}
+
+/** Shown after uploading an HTML page whose images, fonts or scripts weren't included in the upload. */
+function MissingFilesWarning({ warnings, onDismiss }) {
+  return (
+    <div className="missing-files" role="alert">
+      <div className="row">
+        <strong className="grow">⚠️ Some files your design needs weren’t uploaded</strong>
+        <button className="link-btn" onClick={onDismiss}>
+          Dismiss
+        </button>
+      </div>
+      {warnings.map((w) => (
+        <div key={w.file} className="small">
+          <strong>{w.file}</strong>{' '}
+          {w.total > 0 && (
+            <>
+              refers to {w.total} file{w.total === 1 ? '' : 's'} that aren’t in the upload:{' '}
+              <span className="missing-list">
+                {w.files.slice(0, 8).join(', ')}
+                {w.total > 8 && `, and ${w.total - 8} more`}
+              </span>
+              .{' '}
+            </>
+          )}
+          {w.computerPaths.length > 0 && (
+            <>
+              It also links to files on your computer (<code>{w.computerPaths[0]}</code>), which won’t work online.{' '}
+            </>
+          )}
+        </div>
+      ))}
+      <p className="small">
+        <strong>To fix it:</strong> in Finder, right-click the folder that holds the HTML file and its images, choose{' '}
+        <strong>Compress</strong>, then use <strong>Upload new version</strong> on that page and pick the{' '}
+        <strong>.zip</strong>. On Windows, right-click the folder and choose <strong>Send to → Compressed (zipped)
+        folder</strong>.
+      </p>
+    </div>
+  );
 }
 
 const ACCEPTED = /\.(pdf|html?|zip)$/i;

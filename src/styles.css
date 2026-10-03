@@ -1867,3 +1867,23 @@ label {
 .provider.active .provider-note {
   color: var(--primary);
 }
+
+.missing-files {
+  background: var(--change-soft);
+  border: 1px solid #f1d3ad;
+  border-left: 4px solid var(--change);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.missing-files p {
+  margin: 0;
+}
+.missing-list {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  word-break: break-all;
+}

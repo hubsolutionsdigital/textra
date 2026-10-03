@@ -63,7 +63,7 @@ export function storeSite(file) {
     if (isHtmlName(file.originalname)) {
       fs.mkdirSync(dir, { recursive: true });
       fs.copyFileSync(file.path, path.join(dir, 'index.html'));
-      return { storedName: `sites/${id}`, entry: 'index.html' };
+      return { storedName: `sites/${id}`, entry: 'index.html', missing: findMissingFiles(dir) };
     }
     let entries;
     try {
@@ -91,13 +91,68 @@ export function storeSite(file) {
       fs.writeFileSync(target, entries[name]);
     }
     names = names.map((n) => n.slice(strip.length));
-    return { storedName: `sites/${id}`, entry: pickEntry(names) };
+    return { storedName: `sites/${id}`, entry: pickEntry(names), missing: findMissingFiles(dir) };
   } catch (err) {
     fs.rmSync(dir, { recursive: true, force: true });
     throw err;
   } finally {
     fs.rmSync(file.path, { force: true });
   }
+}
+
+const ASSET_EXT = 'png|jpe?g|gif|webp|avif|svg|ico|mp4|webm|mov|mp3|wav|woff2?|ttf|otf|json|lottie|glb|gltf';
+// Attribute and CSS references, plus quoted asset paths inside scripts (e.g. image lists for a carousel).
+const REF_PATTERNS = [
+  /\s(?:src|href|poster|data-src|data-bg)\s*=\s*["']([^"']+)["']/gi,
+  /url\(\s*["']?([^"')]+)["']?\s*\)/gi,
+  new RegExp(`["'\`]([^"'\`\\s<>(){}]+\\.(?:${ASSET_EXT}))(?:[?#][^"'\`]*)?["'\`]`, 'gi'),
+];
+const SCANNED = /\.(html?|css|js|mjs)$/i;
+
+function listFiles(dir, base = '') {
+  return fs.readdirSync(path.join(dir, base), { withFileTypes: true }).flatMap((d) =>
+    d.isDirectory() ? listFiles(dir, path.join(base, d.name)) : [path.join(base, d.name)],
+  );
+}
+
+/**
+ * Local files the pages refer to but the upload doesn't contain, typically because only index.html was
+ * uploaded instead of a zip of its folder. Returned so the agency can be warned straight away.
+ */
+export function findMissingFiles(dir, limit = 30) {
+  const missing = new Set();
+  const external = new Set();
+  for (const rel of listFiles(dir).filter((f) => SCANNED.test(f))) {
+    const text = fs.readFileSync(path.join(dir, rel), 'utf8');
+    for (const pattern of REF_PATTERNS) {
+      for (const match of text.matchAll(pattern)) {
+        let ref = match[1].trim();
+        if (/^file:/i.test(ref)) {
+          external.add(ref);
+          continue;
+        }
+        if (!ref || /^(?:[a-z][a-z0-9+.-]*:|\/\/|#|\{|\$)/i.test(ref) || ref.includes('${')) continue;
+        ref = ref.split(/[?#]/)[0];
+        if (!ref || ref.endsWith('/')) continue;
+        let decoded;
+        try {
+          decoded = decodeURIComponent(ref);
+        } catch {
+          decoded = ref;
+        }
+        const target = decoded.startsWith('/')
+          ? path.join(dir, decoded)
+          : path.resolve(dir, path.dirname(rel), decoded);
+        if (!target.startsWith(dir + path.sep)) continue;
+        if (!fs.existsSync(target)) missing.add(path.relative(dir, target).split(path.sep).join('/'));
+      }
+    }
+  }
+  return {
+    files: [...missing].sort().slice(0, limit),
+    total: missing.size,
+    computerPaths: [...external].slice(0, 5),
+  };
 }
 
 /** Points root-relative URLs ("/css/x.css") at the site's own folder instead of the portal. */

@@ -169,6 +169,30 @@ test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep el
   r = await api('POST', `/api/projects/${projectId}/screens`, fd);
   assert.equal(r.status, 200, JSON.stringify(r.data));
   const single = r.data.screens[0];
+  assert.equal(r.data.upload_warning, undefined, 'self-contained page: no warning');
+
+  // a lone index.html whose images live next to it on the designer's computer
+  fd = new FormData();
+  fd.append(
+    'file',
+    new Blob(
+      [
+        `<html><head><style>.hero{background:url('img/hero.jpg')}</style></head><body>
+         <img src="images/card-1.webp"><img src="https://cdn.example.com/x.png"><img src="data:image/png;base64,AA">
+         <a href="#top">top</a><img src="file:///Users/susan/Downloads/logo.png">
+         <script>const cards = ['images/card-2.jpg', "images/card-3.jpg"]; const tpl = \`img/\${n}.png\`;</script>
+         </body></html>`,
+      ],
+      { type: 'text/html' },
+    ),
+    'index.html',
+  );
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.data.upload_warning.files, ['images/card-1.webp', 'images/card-2.jpg', 'images/card-3.jpg', 'img/hero.jpg']);
+  assert.equal(r.data.upload_warning.total, 4);
+  assert.deepEqual(r.data.upload_warning.computerPaths, ['file:///Users/susan/Downloads/logo.png']);
+  await api('DELETE', `/api/projects/${projectId}/screens/${r.data.screens.at(-1).id}`);
   assert.equal(single.title, 'Landing');
   assert.equal(single.current_version.kind, 'html');
   assert.equal(single.current_version.entry, 'index.html');
@@ -190,6 +214,7 @@ test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep el
   fd.append('file', new Blob([zip], { type: 'application/zip' }), 'home.zip');
   r = await api('POST', `/api/projects/${projectId}/screens`, fd);
   const v = r.data.screens[1].current_version;
+  assert.equal(r.data.upload_warning, undefined, 'zip with all its files: no warning');
   assert.equal(v.entry, 'index.html');
   res = await fetch(`${base}/sites/${v.site_token}/index.html`);
   assert.match(await res.text(), new RegExp(`href="/sites/${v.site_token}/css/app.css"`));

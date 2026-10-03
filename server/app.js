@@ -416,17 +416,18 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     p.stage === 'review' ? p.current_round : p.stage === 'revising' ? p.current_round + 1 : p.max_rounds + 1;
 
   /** Stores an uploaded design: a PDF, a single .html page, or a .zip of a static site. */
+  /** Stores the upload; returns { missing } for HTML sites so the agency can be warned about absent files. */
   const addVersion = (p, screenId, file) => {
     if (!file) fail(400, 'No file uploaded');
     const round = Math.min(uploadRound(p), p.max_rounds + 1);
     const name = file.originalname.slice(0, 200);
     if (isHtmlName(name) || isZipName(name)) {
-      const { storedName, entry } = storeSite(file);
+      const { storedName, entry, missing } = storeSite(file);
       db.prepare(
         `INSERT INTO versions (screen_id, round, original_name, stored_name, kind, site_token, entry)
          VALUES (?, ?, ?, ?, 'html', ?, ?)`,
       ).run(screenId, round, name, storedName, token(18), entry);
-      return;
+      return { missing };
     }
     const stored = storedUpload(file, ['application/pdf']);
     db.prepare('INSERT INTO versions (screen_id, round, original_name, stored_name) VALUES (?, ?, ?, ?)').run(
@@ -435,6 +436,13 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       name,
       stored,
     );
+    return {};
+  };
+
+  const uploadWarning = (fileName, result) => {
+    const m = result?.missing;
+    if (!m || (!m.total && !m.computerPaths.length)) return undefined;
+    return { file: fileName, ...m };
   };
 
   app.post('/api/projects/:projectId/screens', requireUser, upload.single('file'), (req, res) => {
@@ -442,15 +450,18 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     if (p.stage === 'approved') fail(409, 'This project is already approved');
     const title = cleanName(req.body.title) || cleanName(req.file?.originalname?.replace(/\.(pdf|html?|zip)$/i, ''));
     if (!title) fail(400, 'Give the page a title');
-    tx(db, () => {
+    const result = tx(db, () => {
       const pos = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS n FROM screens WHERE project_id = ?').get(p.id).n;
       const { lastInsertRowid } = db
         .prepare('INSERT INTO screens (project_id, title, note, position) VALUES (?, ?, ?, ?)')
         .run(p.id, title, String(req.body.note ?? '').slice(0, 1000), pos);
-      if (req.file) addVersion(p, Number(lastInsertRowid), req.file);
+      return req.file ? addVersion(p, Number(lastInsertRowid), req.file) : {};
     });
     logEvent(p, req.user.name, 'screen_added', `Page "${title}" added`);
-    res.json(projectBundle(q.project.get(p.id), { forClient: false }));
+    res.json({
+      ...projectBundle(q.project.get(p.id), { forClient: false }),
+      upload_warning: uploadWarning(req.file?.originalname, result),
+    });
   });
 
   app.patch('/api/projects/:projectId/screens/:screenId', requireUser, (req, res) => {
@@ -494,11 +505,14 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       const p = ownedProject(req);
       if (p.stage === 'approved') fail(409, 'This project is already approved');
       const s = q.screen.get(Number(req.params.screenId), p.id) ?? fail(404, 'Page not found');
-      addVersion(p, s.id, req.file);
+      const result = addVersion(p, s.id, req.file);
       const round = Math.min(uploadRound(p), p.max_rounds + 1);
       const label = round > p.max_rounds ? 'final version' : `round ${round} version`;
       logEvent(p, req.user.name, 'version_uploaded', `New ${label} of "${s.title}" uploaded`);
-      res.json(projectBundle(q.project.get(p.id), { forClient: false }));
+      res.json({
+        ...projectBundle(q.project.get(p.id), { forClient: false }),
+        upload_warning: uploadWarning(req.file?.originalname, result),
+      });
     },
   );
 
