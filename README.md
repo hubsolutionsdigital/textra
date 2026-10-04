@@ -45,6 +45,50 @@ approval and a "development has started" hand-off.
 - After the last round, a "that's a wrap" celebration shows. When the final design arrives, there's an **Approve design** button,
   and approving triggers the "Development has started 🚀" screen with the live URL once shared.
 
+## Quiz Arena (live quizzes)
+
+A Kahoot-style quiz game built into the portal, aimed at UI/UX and SEO training. Open **🎮 Quiz Arena** in the
+header.
+
+**Building a quiz** (signed in): start from **UI/UX Design Showdown**, **SEO Speedrun** or a blank quiz. Slides sit on
+the left (drag to reorder), the question in the middle, settings on the right. Everything saves automatically, and a
+**⚠ to finish** list shows what's still missing before you can host. Each question has a time limit (10 s–2 min),
+points (standard, double or none), an optional explanation shown after the answer, and an **animated graphic**:
+12 built-in looping scenes (page building, search results, mobile app, colour palette, typography, page-speed gauge,
+rank growth, layout grid, conversion funnel, crawler bot, link network, click & CTA) or your own image/GIF.
+
+Question types:
+
+| Type | How players answer | Scoring |
+| --- | --- | --- |
+| 🔘 Quiz | Tap one of up to 6 coloured answers (or several, if more than one is correct) | all or nothing; multi-answer loses credit for wrong picks |
+| ⚖️ True or false | Tap True or False | all or nothing |
+| ↕️ Drag to order | Drag items into sequence (or use ▲▼) | per item in the right place |
+| 🗂️ Sort into groups | Drag cards into 2–4 buckets | per card |
+| 🔗 Match pairs | Drag answers onto their partners | per pair |
+| 📍 Pin the spot | Drop a pin on a design: built-in landing page, search result, dashboard or checkout mockups, or your own screenshot. You draw the correct area in the editor. | in the area or not |
+| 🎚️ Slider guess | Slide to a number | full points within ±tolerance, half within twice that |
+| 🧩 Fill the gaps | Drag words (plus decoys) into the blanks | per gap |
+
+Every drag also works as **tap, then tap** (mouse, touch, pen and keyboard), and the page auto-scrolls when you drag
+near the edge of a phone screen.
+
+**Hosting**: click **▶ Host live** and put the big screen on a projector. Players go to `/play` (or scan the QR code),
+enter the 6-digit PIN, pick a nickname and avatar. Click a player in the lobby to remove them. Space or → moves the
+game on: a 4-second "get ready" for each question, the question with a timer, then the reveal (answer counts, a
+heat map of pins, slider guesses or an accuracy ring), the leaderboard (rows glide to their new rank) and finally an
+animated podium. Players see whether they were right, points earned, streak bonuses and how far behind the next
+player they are, and can send emoji reactions that float up the big screen.
+
+Points: up to 1000 per question (2000 for double), losing up to half for answering slowly, times how right the answer
+was. Fully correct answers in a row add a streak bonus (+100 for two in a row, up to +500). Answers are checked on the
+server, and players never receive the correct answers until time is up. Final standings are saved under **🏆 Results**.
+
+**Practice link**: each quiz has a 🔗 practice link for solo, self-paced play (optionally against the clock), handy for
+sharing as homework. It's checked on the server too.
+
+Live games are kept in memory, so restarting the server ends any game in progress (quizzes and results are stored).
+
 ## HTML prototypes
 
 - Clients switch between **Desktop (1440×900), Laptop (1280×800), Tablet (768×950) and Mobile (390×750)**. Tablet
@@ -72,7 +116,8 @@ approval and a "development has started" hand-off.
 ## Stack
 
 - **Server:** Node ≥ 22.5, Express 5, built-in `node:sqlite`, and multer for uploads. Files are stored on disk in `data/`.
-- **Web:** React 19 + Vite, with `pdfjs-dist` for rendering PDFs to canvas and `canvas-confetti`.
+- **Web:** React 19 + Vite, with `pdfjs-dist` for rendering PDFs to canvas, `canvas-confetti`, and `qrcode` for the
+  quiz lobby. Live quizzes use Server-Sent Events (no extra server dependency).
 
 ## Running it
 

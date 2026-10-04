@@ -16,6 +16,7 @@ import {
 import { parseEmails, roundSubmittedEmail } from './emails.js';
 import { isHtmlName, isZipName, serveSiteFile, storeSite } from './sites.js';
 import { fileURLToPath } from 'node:url';
+import { mountQuiz } from './quiz.js';
 
 const FRAME_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public', 'frame.js');
 const DEVICES = ['desktop', 'laptop', 'tablet', 'mobile'];
@@ -1018,6 +1019,10 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     if (!rest) return res.redirect(`/sites/${v.site_token}/${device ? `~${device}/` : ''}${v.entry}`);
     serveSiteFile(res, v.stored_name, v.site_token, rest, device);
   });
+
+  // ---------- Quiz Arena ----------
+
+  mountQuiz(app, db, { requireUser });
 
   // ---------- errors ----------
 

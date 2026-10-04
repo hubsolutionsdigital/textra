@@ -12,6 +12,9 @@ export default function AppHeader({ children }) {
       </Link>
       <div className="header-crumbs">{children}</div>
       <div className="header-user">
+        <Link to="/quizzes" className="btn btn-ghost btn-sm">
+          🎮 Quiz Arena
+        </Link>
         <Link to="/settings/email" className="btn btn-ghost btn-sm hide-sm">
           ✉️ Email settings
         </Link>

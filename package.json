@@ -27,6 +27,7 @@
     "canvas-confetti": "^1.9.4",
     "concurrently": "^10.0.5",
     "pdfjs-dist": "^6.3.289",
+    "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.4",
