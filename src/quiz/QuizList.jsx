@@ -12,6 +12,7 @@ import './quiz.css';
 const STARTERS = [
   { id: 'uiux', emoji: '🎨', title: 'UI/UX Design Showdown', text: 'Laws of UX, accessibility, Gestalt, layout. 10 questions using every drag-and-drop type.', scene: 'browser' },
   { id: 'seo', emoji: '🔎', title: 'SEO Speedrun', text: 'Core Web Vitals, SERP anatomy, technical and on-page SEO. 10 questions.', scene: 'serp' },
+  { id: 'sales', emoji: '🤝', title: 'Sales Objection Dojo', text: 'Price, timing, authority, trust and competitor objections, with cartoon 3D characters. 10 questions.', scene: 'objprice' },
   { id: 'blank', emoji: '✨', title: 'Start from scratch', text: 'An empty quiz. Add your own questions and animated graphics.', scene: 'grid' },
 ];
 

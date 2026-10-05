@@ -2105,6 +2105,139 @@ details.qz-solution[open] summary {
 .c-lock { fill: none; stroke: #1d8a55; stroke-width: 2; }
 .c-divider { stroke: #e6e8f0; stroke-width: 2; }
 
+/* ---------- cartoon 3D scenes ---------- */
+/* Rotations and scales written as SVG attributes are measured from the drawing's origin, not the
+   shape's own box (which the animated parts need). */
+.qz-cartoon [transform] { transform-box: view-box; }
+.qz-cartoon .s3-text { font-size: 13px; font-weight: 800; fill: #241a5c; }
+.qz-cartoon .s3-big { font-size: 22px; font-weight: 900; fill: #7a4a00; }
+.qz-cartoon .s3-hmm { font-size: 18px; font-weight: 900; fill: #fff; font-style: italic; }
+.qz-cartoon .s3-question { font-size: 34px; font-weight: 900; fill: #ffd23f; animation: s3-hop 1.6s ease-in-out infinite; }
+.qz-cartoon .s3-zzz { font-size: 16px; font-weight: 900; fill: rgba(255, 255, 255, 0.8); animation: s3-zzz 2.4s ease-out infinite; }
+.qz-cartoon .s3-trophy-text { font-size: 30px; font-weight: 900; fill: #9c6300; }
+
+.s3-bob { animation: s3-bob 2.4s ease-in-out infinite; }
+.s3-bob-slow { animation: s3-bob 3.4s ease-in-out infinite; }
+@keyframes s3-bob {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(-4px) scaleY(1.015); }
+}
+.s3-blink { transform-origin: 50% 50%; animation: s3-blink 4s infinite; }
+@keyframes s3-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+.s3-bubble { transform-origin: 20% 100%; animation: s3-bubble 4s cubic-bezier(0.2, 1.5, 0.4, 1) infinite both; }
+@keyframes s3-bubble {
+  0% { transform: scale(0); opacity: 0; }
+  12%, 85% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0; }
+}
+.s3-wave { transform-origin: 0% 100%; animation: s3-wave 1.2s ease-in-out infinite alternate; }
+@keyframes s3-wave {
+  from { transform: rotate(-8deg); }
+  to { transform: rotate(14deg); }
+}
+.s3-point { transform-origin: 0% 50%; animation: s3-point 1.4s ease-in-out infinite; }
+@keyframes s3-point {
+  50% { transform: translateX(4px) rotate(-4deg); }
+}
+.s3-cheer { transform-origin: 50% 100%; animation: s3-cheer 0.7s ease-in-out infinite alternate; }
+@keyframes s3-cheer {
+  to { transform: translateY(-5px) scaleX(1.05); }
+}
+.s3-shake-hand { animation: s3-shake-hand 0.5s ease-in-out infinite alternate; }
+@keyframes s3-shake-hand {
+  to { transform: translateY(5px); }
+}
+.s3-swing { transform-box: view-box !important; transform-origin: 226px 34px; animation: s3-swing 2.6s ease-in-out infinite; }
+@keyframes s3-swing {
+  0%, 100% { transform: rotate(-12deg); }
+  50% { transform: rotate(12deg); }
+}
+.s3-coin { animation: s3-coin 2s ease-in-out infinite; }
+@keyframes s3-coin {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-8px); }
+}
+.s3-twinkle { transform-origin: 50% 50%; animation: s3-twinkle 1.6s ease-in-out infinite; }
+@keyframes s3-twinkle {
+  0%, 100% { transform: scale(0.3) rotate(0); opacity: 0.2; }
+  50% { transform: scale(1.1) rotate(45deg); opacity: 1; }
+}
+.s3-ring-shake { transform-origin: 50% 90%; animation: s3-ring 2.4s ease-in-out infinite; }
+@keyframes s3-ring {
+  0%, 40%, 100% { transform: rotate(0); }
+  44%, 52%, 60%, 68% { transform: rotate(-7deg) translateY(-2px); }
+  48%, 56%, 64%, 72% { transform: rotate(7deg) translateY(-2px); }
+}
+.s3-hand-fast { transform-box: view-box !important; transform-origin: 232px 96px; animation: qz-spin 2s linear infinite; }
+.s3-hand-slow { transform-box: view-box !important; transform-origin: 232px 96px; animation: qz-spin 12s linear infinite; }
+.s3-waves { animation: s3-waves 2.4s ease-in-out infinite; }
+@keyframes s3-waves {
+  0%, 40%, 100% { opacity: 0; }
+  50%, 70% { opacity: 1; }
+}
+@keyframes s3-zzz {
+  0% { transform: translate(0, 0); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: translate(10px, -26px); opacity: 0; }
+}
+.s3-hop { animation: s3-hop 2.2s ease-in-out infinite; }
+@keyframes s3-hop {
+  0%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-10px); }
+  55% { transform: translateY(0) scaleY(0.95); }
+}
+.s3-crown { transform-origin: 50% 100%; animation: s3-crown 2s ease-in-out infinite; }
+@keyframes s3-crown {
+  0%, 100% { transform: rotate(-6deg) translateY(0); }
+  50% { transform: rotate(6deg) translateY(-4px); }
+}
+.s3-glass-scan { animation: s3-scan 3s ease-in-out infinite; }
+@keyframes s3-scan {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(14px, -10px); }
+}
+.s3-float { animation: s3-bob 3s ease-in-out infinite; }
+.s3-check { stroke-dasharray: 60; animation: s3-check 3s ease-in-out infinite; }
+@keyframes s3-check {
+  0%, 15% { stroke-dashoffset: 60; }
+  45%, 100% { stroke-dashoffset: 0; }
+}
+.s3-star { transform-origin: 50% 50%; animation: s3-star 3s ease-in-out infinite both; }
+@keyframes s3-star {
+  0%, 30% { transform: scale(0); }
+  45%, 90% { transform: scale(1); }
+  100% { transform: scale(0); }
+}
+.s3-cloud { transform-origin: 0% 100%; animation: s3-cloud 3s ease-in-out infinite; }
+@keyframes s3-cloud {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04) translateY(-3px); }
+}
+.s3-spin { transform-origin: 50% 50%; animation: qz-spin 4s linear infinite; }
+.s3-spin-back { transform-origin: 50% 50%; animation: qz-spin 3s linear infinite reverse; }
+.s3-phone { transform-origin: 50% 100%; animation: s3-ring 1.8s ease-in-out infinite; }
+.s3-signal { animation: s3-signal 1.2s ease-out infinite; }
+@keyframes s3-signal {
+  0% { opacity: 0; transform: translateX(-4px); }
+  40% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(4px); }
+}
+.s3-trophy { transform-origin: 50% 100%; animation: s3-trophy 2.4s ease-in-out infinite; }
+@keyframes s3-trophy {
+  0%, 100% { transform: rotate(0) scale(1); }
+  20% { transform: rotate(-4deg) scale(1.04); }
+  40% { transform: rotate(4deg) scale(1.04); }
+  60% { transform: rotate(0) scale(1); }
+}
+.s3-confetti { animation: s3-confetti 2.4s linear infinite; }
+@keyframes s3-confetti {
+  0% { transform: translateY(0) rotate(0); opacity: 1; }
+  100% { transform: translateY(200px) rotate(540deg); opacity: 0.6; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .qz-root *,
   .qz-scene *,

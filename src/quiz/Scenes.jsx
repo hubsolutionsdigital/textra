@@ -2,6 +2,8 @@
 // quiz.css), so they loop smoothly, scale to any size and cost nothing to download.
 // Animations pause for people who prefer reduced motion.
 
+import { CARTOONS } from './Cartoons.jsx';
+
 const W = 320;
 const H = 200;
 
@@ -250,6 +252,7 @@ const MAP = {
   crawler: Crawler,
   links: Links,
   cursor: Cursor,
+  ...CARTOONS,
 };
 
 /** A question's visual: an uploaded image, an animated scene, or nothing. */

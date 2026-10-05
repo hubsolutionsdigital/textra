@@ -50,12 +50,16 @@ approval and a "development has started" hand-off.
 A Kahoot-style quiz game built into the portal, aimed at UI/UX and SEO training. Open **🎮 Quiz Arena** in the
 header.
 
-**Building a quiz** (signed in): start from **UI/UX Design Showdown**, **SEO Speedrun** or a blank quiz. Slides sit on
+**Building a quiz** (signed in): start from **UI/UX Design Showdown**, **SEO Speedrun**, **Sales Objection Dojo** or a
+blank quiz. Slides sit on
 the left (drag to reorder), the question in the middle, settings on the right. Everything saves automatically, and a
 **⚠ to finish** list shows what's still missing before you can host. Each question has a time limit (10 s–2 min),
 points (standard, double or none), an optional explanation shown after the answer, and an **animated graphic**:
 12 built-in looping scenes (page building, search results, mobile app, colour palette, typography, page-speed gauge,
-rank growth, layout grid, conversion funnel, crawler bot, link network, click & CTA) or your own image/GIF.
+rank growth, layout grid, conversion funnel, crawler bot, link network, click & CTA), 8 cartoon 3D-style character
+scenes for sales training (a sales call, "too expensive" with a swinging price tag, "not right now" with a ringing alarm
+clock, "we use a competitor", "I'll ask my boss", "who are you?" with a trust shield, "I'll think about it" with
+turning gears, and a deal-won celebration), or your own image/GIF.
 
 Question types:
 

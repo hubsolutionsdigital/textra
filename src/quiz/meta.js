@@ -25,6 +25,14 @@ export const SCENES = {
   crawler: 'Crawler bot',
   links: 'Link network',
   cursor: 'Click & CTA',
+  salescall: '3D · Sales call',
+  objprice: '3D · “Too expensive”',
+  objtime: '3D · “Not right now”',
+  objcompetitor: '3D · “We use a competitor”',
+  objauthority: '3D · “Ask my boss”',
+  objtrust: '3D · “Who are you?”',
+  objthink: '3D · “I’ll think about it”',
+  dealwin: '3D · Deal won',
 };
 
 export const CANVASES = {

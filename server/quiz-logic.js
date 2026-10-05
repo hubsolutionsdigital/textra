@@ -18,6 +18,8 @@ export const QUESTION_TYPES = ['choice', 'truefalse', 'order', 'categorize', 'ma
 export const SCENES = [
   'none', 'browser', 'serp', 'mobile', 'palette', 'typography', 'speed', 'growth',
   'grid', 'funnel', 'crawler', 'links', 'cursor',
+  // cartoon 3D characters for sales training
+  'salescall', 'objprice', 'objtime', 'objcompetitor', 'objauthority', 'objtrust', 'objthink', 'dealwin',
 ];
 export const CANVASES = ['landing', 'serp', 'app', 'checkout'];
 export const THEMES = ['aurora', 'sunset', 'ocean', 'forest', 'mono'];

@@ -140,6 +140,78 @@ export const TEMPLATES = {
     ],
   },
 
+  sales: {
+    title: 'Sales Objection Dojo',
+    description: 'Handle price, timing, authority, trust and competitor objections like a pro.',
+    theme: 'sunset',
+    questions: [
+      q('choice', 'The prospect says: “It’s too expensive.” What’s the best first move?', {
+        options: [
+          { text: 'Ask what they’re comparing it to', correct: true },
+          { text: 'Offer a discount straight away' },
+          { text: 'Repeat the full feature list' },
+          { text: 'Agree and end the call politely' },
+        ],
+      }, { visual: { scene: 'objprice' }, explanation: 'Understand before you answer. “Too expensive” compared to what: a competitor, the budget, or doing nothing? Discounting first trains buyers to push back.' }),
+      q('order', 'Put the LAARC objection-handling steps in order.', {
+        items: ['Listen', 'Acknowledge', 'Assess (ask questions)', 'Respond', 'Confirm'],
+      }, { visual: { scene: 'salescall' }, time: 45, explanation: 'Listen fully, acknowledge the concern, dig into it, respond to the real issue, then confirm it’s resolved.' }),
+      q('categorize', 'What kind of objection is each one?', {
+        buckets: ['Price / budget', 'Timing', 'Authority', 'Trust'],
+        items: [
+          { text: 'No budget this quarter', bucket: 0 },
+          { text: 'Your competitor is cheaper', bucket: 0 },
+          { text: 'Call me after the holidays', bucket: 1 },
+          { text: 'We’re mid-migration right now', bucket: 1 },
+          { text: 'I need to run it by my CFO', bucket: 2 },
+          { text: 'Legal has to sign off', bucket: 2 },
+          { text: 'I’ve never heard of you', bucket: 3 },
+          { text: 'How do I know it’ll work for us?', bucket: 3 },
+        ],
+      }, { visual: { scene: 'objauthority' }, time: 60 }),
+      q('truefalse', 'An objection usually means the prospect isn’t interested at all.', { answer: false }, {
+        visual: { scene: 'objthink' },
+        time: 20,
+        explanation: 'False. Objections are often a sign of engagement: the buyer is weighing it up and needs more information.',
+      }),
+      q('match', 'Match each objection to a strong reply.', {
+        pairs: [
+          { left: '“Just send me some info”', right: '“Sure. What should it cover for you?”' },
+          { left: '“We already use a competitor”', right: '“What would you change about them?”' },
+          { left: '“Now’s not a good time”', right: '“What needs to happen first?”' },
+          { left: '“I need to ask my boss”', right: '“What will they ask? Let’s prep together.”' },
+        ],
+      }, { visual: { scene: 'objcompetitor' }, time: 60 }),
+      q('hotspot', 'A shopper hesitates: “Is this payment secure?” Pin the element that answers that objection.', {
+        canvas: 'checkout',
+        target: { x: 0.05, y: 0.82, w: 0.225, h: 0.06 },
+      }, { explanation: 'Trust signals (security badges, guarantees, reviews) placed right by the pay button answer the objection at the moment it appears.' }),
+      q('slider', 'Gong’s analysis of sales calls: what share of the call do top reps spend talking?', {
+        min: 0, max: 100, step: 1, answer: 43, tolerance: 5, unit: '%',
+      }, { visual: { scene: 'salescall' }, explanation: 'Top performers talk about 43% of the time and listen 57%. Questions beat pitches.' }),
+      q('blanks', 'Complete the classic reframe.', {
+        text: 'Feel, [[Felt]], [[Found]]: “I understand how you feel. Others felt the same, and here’s what they found…”',
+        distractors: ['Fixed', 'Failed', 'Forgot'],
+      }, { visual: { scene: 'objtrust' } }),
+      q('choice', 'They say “I’ll think about it.” Which are good responses? Pick all that apply.', {
+        options: [
+          { text: 'Ask what specifically they want to think over', correct: true },
+          { text: 'Agree a concrete next step and date', correct: true },
+          { text: 'Recap the value they said mattered most', correct: true },
+          { text: 'Invent a deadline to pressure them' },
+        ],
+      }, { visual: { scene: 'objthink' } }),
+      q('choice', '“Call me next quarter.” What’s the strongest reply?', {
+        options: [
+          { text: '“Sure. What makes next quarter better?”', correct: true },
+          { text: '“OK, I’ll call you in three months.”' },
+          { text: '“Prices go up if you wait.”' },
+          { text: '“I’ll email you every week until then.”' },
+        ],
+      }, { visual: { scene: 'objtime' }, points: 2, time: 20, explanation: 'Find the real reason behind the timing. It may be budget cycles, a project, or a polite no.' }),
+    ],
+  },
+
   blank: {
     title: 'Untitled quiz',
     description: '',
