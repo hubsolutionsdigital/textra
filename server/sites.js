@@ -75,9 +75,12 @@ export function storeSite(file) {
   const dir = path.join(SITES_DIR, id);
   try {
     if (isHtmlName(file.originalname)) {
+      // Keep the real file name (about.html) so links to it from other pages, and its own links, still match.
+      const base = path.basename(file.originalname);
+      const name = /^[\w.-]+\.html?$/i.test(base) ? base : 'index.html';
       fs.mkdirSync(dir, { recursive: true });
-      fs.copyFileSync(file.path, path.join(dir, 'index.html'));
-      return { storedName: `sites/${id}`, entry: 'index.html', pages: ['index.html'], missing: findMissingFiles(dir) };
+      fs.copyFileSync(file.path, path.join(dir, name));
+      return { storedName: `sites/${id}`, entry: name, pages: [name], missing: findMissingFiles(dir) };
     }
     let entries;
     try {
@@ -134,7 +137,7 @@ function listFiles(dir, base = '') {
  * Local files the pages refer to but the upload doesn't contain, typically because only index.html was
  * uploaded instead of a zip of its folder. Returned so the agency can be warned straight away.
  */
-export function findMissingFiles(dir, limit = 30) {
+export function findMissingFiles(dir, { baseDir = null, limit = 30 } = {}) {
   const missing = new Set();
   const missingPages = new Set();
   const external = new Set();
@@ -164,6 +167,7 @@ export function findMissingFiles(dir, limit = 30) {
         if (!target.startsWith(dir + path.sep)) continue;
         if (fs.existsSync(target)) continue;
         const name = path.relative(dir, target).split(path.sep).join('/');
+        if (baseDir && fs.existsSync(path.join(baseDir, name))) continue; // provided by the earlier upload
         // Links to pages that aren't designed yet are normal in a prototype; report them separately.
         (/\.html?$/i.test(name) ? missingPages : missing).add(name);
       }
@@ -175,6 +179,28 @@ export function findMissingFiles(dir, limit = 30) {
     pages: [...missingPages].sort().slice(0, limit),
     computerPaths: [...external].slice(0, 5),
   };
+}
+
+/**
+ * A page added on its own later (e.g. about.html after the rest of the site was uploaded as a zip) refers to
+ * images and pages that live in the earlier upload. Picks the project's earlier site that provides the most of
+ * them; the new upload then falls back to it for anything it doesn't contain itself.
+ */
+export function linkToEarlierSite(site, candidateStoredNames) {
+  const dir = path.join(UPLOAD_DIR, site.storedName);
+  const missingCount = (m) => m.total + m.pages.length;
+  const before = missingCount(site.missing);
+  if (!before) return site;
+  let best = null;
+  for (const candidate of new Set(candidateStoredNames)) {
+    if (!candidate || candidate === site.storedName) continue;
+    const baseDir = path.join(UPLOAD_DIR, candidate);
+    if (!fs.existsSync(baseDir)) continue;
+    const missing = findMissingFiles(dir, { baseDir });
+    const resolved = before - missingCount(missing);
+    if (resolved > 0 && (!best || resolved > best.resolved)) best = { assetBase: candidate, missing, resolved };
+  }
+  return best ? { ...site, assetBase: best.assetBase, missing: best.missing } : site;
 }
 
 /** Points root-relative URLs ("/css/x.css") at the site's own folder instead of the portal. */
@@ -235,11 +261,21 @@ function injectHelper(html, { customCursor = false } = {}) {
  * Serves one file of an uploaded site. Pages are delivered with a CSP sandbox (opaque origin) so their
  * scripts can never act as the portal or read its cookies, even if the URL is opened directly.
  */
-export function serveSiteFile(res, storedName, siteToken, relPath, device = null) {
-  const dir = path.join(UPLOAD_DIR, storedName);
+export function serveSiteFile(res, storedName, siteToken, relPath, device = null, assetBase = null) {
+  const ownDir = path.join(UPLOAD_DIR, storedName);
+  let dir = ownDir;
   let target = path.resolve(dir, decodeURIComponent(relPath || ''));
   if (target !== dir && !target.startsWith(dir + path.sep)) return res.status(404).end();
   if (fs.existsSync(target) && fs.statSync(target).isDirectory()) target = path.join(target, 'index.html');
+  if (!fs.existsSync(target) && assetBase) {
+    // Not in this upload: serve it from the earlier upload this page was added to (shared images, other pages).
+    const baseDir = path.join(UPLOAD_DIR, assetBase);
+    const fallback = path.join(baseDir, path.relative(ownDir, target));
+    if (fallback.startsWith(baseDir + path.sep) && fs.existsSync(fallback) && fs.statSync(fallback).isFile()) {
+      dir = baseDir;
+      target = fallback;
+    }
+  }
   if (!fs.existsSync(target)) {
     // A link to a page that wasn't uploaded (e.g. a menu item not designed yet): show a friendly page that still
     // loads the helper, so the portal knows where the reviewer is and can offer a way back.
@@ -272,7 +308,7 @@ h1{font-size:20px;margin:0 0 6px}p{margin:0;color:#5b6b80}</style></head>
 
   if (ext === '.html' || ext === '.htm') {
     return res.send(
-      injectHelper(adapt(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base)), { customCursor: usesCustomCursor(dir) }),
+      injectHelper(adapt(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base)), { customCursor: usesCustomCursor(ownDir) || (assetBase ? usesCustomCursor(path.join(UPLOAD_DIR, assetBase)) : false) }),
     );
   }
   if (ext === '.css') return res.send(adapt(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base)));

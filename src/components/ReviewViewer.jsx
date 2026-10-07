@@ -59,7 +59,7 @@ export default function ReviewViewer({
       (s) =>
         s.id !== screen.id &&
         s.current_version?.kind === 'html' &&
-        s.current_version.stored_name === version.stored_name &&
+        (s.current_version.site_group ?? s.current_version.stored_name) === (version.site_group ?? version.stored_name) &&
         s.current_version.entry === page,
     );
     if (target && onOpenScreen) {

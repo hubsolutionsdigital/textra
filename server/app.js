@@ -14,7 +14,7 @@ import {
   ZOHO_REGIONS,
 } from './mailer.js';
 import { parseEmails, roundSubmittedEmail } from './emails.js';
-import { isHtmlName, isZipName, serveSiteFile, storeSite } from './sites.js';
+import { isHtmlName, isZipName, linkToEarlierSite, serveSiteFile, storeSite } from './sites.js';
 import { fileURLToPath } from 'node:url';
 
 const FRAME_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public', 'frame.js');
@@ -141,7 +141,8 @@ export function createApp(db, { mailer = createMailer() } = {}) {
 
   /** Everything a viewer (agency or client) needs to render a project. */
   function projectBundle(project, { forClient }) {
-    const versions = q.versions.all(project.id);
+    // site_group: pages from the same upload, or added later on top of it, belong together.
+    const versions = q.versions.all(project.id).map((v) => (v.kind === 'html' ? { ...v, site_group: v.asset_base || v.stored_name } : v));
     const attachments = q.attachments.all(project.id);
     const screens = q.screens.all(project.id).map((s) => {
       const own = versions.filter((v) => v.screen_id === s.id);
@@ -401,7 +402,13 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       logEvent(p, req.user.name, 'final_sent', 'Final design sent for approval');
     } else if (action === 'reopen') {
       if (p.stage !== 'revising') fail(409, 'This round is already open');
-      db.prepare(`UPDATE projects SET stage = 'review' WHERE id = ?`).run(p.id);
+      tx(db, () => {
+        db.prepare(`UPDATE projects SET stage = 'review' WHERE id = ?`).run(p.id);
+        // Anything uploaded while the round was closed (labelled for the next round) is now part of this round.
+        db.prepare(
+          `UPDATE versions SET round = ? WHERE round = ? AND screen_id IN (SELECT id FROM screens WHERE project_id = ?)`,
+        ).run(p.current_round, p.current_round + 1, p.id);
+      });
       logEvent(p, req.user.name, 'round_reopened', `Round ${p.current_round} reopened for more feedback`);
     } else {
       fail(400, 'Unknown action');
@@ -422,12 +429,12 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     const round = Math.min(uploadRound(p), p.max_rounds + 1);
     const name = file.originalname.slice(0, 200);
     if (isHtmlName(name) || isZipName(name)) {
-      const { storedName, entry, missing } = storeSite(file);
+      const site = linkToEarlierSite(storeSite(file), siteCandidates(p));
       db.prepare(
-        `INSERT INTO versions (screen_id, round, original_name, stored_name, kind, site_token, entry)
-         VALUES (?, ?, ?, ?, 'html', ?, ?)`,
-      ).run(screenId, round, name, storedName, token(18), entry);
-      return { missing };
+        `INSERT INTO versions (screen_id, round, original_name, stored_name, kind, site_token, entry, asset_base)
+         VALUES (?, ?, ?, ?, 'html', ?, ?, ?)`,
+      ).run(screenId, round, name, site.storedName, token(18), site.entry, site.assetBase ?? null);
+      return { missing: site.missing };
     }
     const stored = storedUpload(file, ['application/pdf']);
     db.prepare('INSERT INTO versions (screen_id, round, original_name, stored_name) VALUES (?, ?, ?, ?)').run(
@@ -458,10 +465,26 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   const insertSiteVersion = (p, screenId, fileName, site, entry) =>
     db
       .prepare(
-        `INSERT INTO versions (screen_id, round, original_name, stored_name, kind, site_token, entry)
-         VALUES (?, ?, ?, ?, 'html', ?, ?)`,
+        `INSERT INTO versions (screen_id, round, original_name, stored_name, kind, site_token, entry, asset_base)
+         VALUES (?, ?, ?, ?, 'html', ?, ?, ?)`,
       )
-      .run(screenId, Math.min(uploadRound(p), p.max_rounds + 1), fileName, site.storedName, token(18), entry);
+      .run(
+        screenId,
+        Math.min(uploadRound(p), p.max_rounds + 1),
+        fileName,
+        site.storedName,
+        token(18),
+        entry,
+        site.assetBase ?? null,
+      );
+
+  /** Earlier HTML uploads in this project (the root of each group) that a new upload could draw files from. */
+  const siteCandidates = (p) =>
+    q.screens
+      .all(p.id)
+      .map((sc) => latestVersion(sc.id))
+      .filter((v) => v?.kind === 'html')
+      .map((v) => v.asset_base || v.stored_name);
 
   const latestVersion = (screenId) => db.prepare('SELECT * FROM versions WHERE screen_id = ? ORDER BY id DESC LIMIT 1').get(screenId);
 
@@ -480,15 +503,16 @@ export function createApp(db, { mailer = createMailer() } = {}) {
    * together, matched by file name; pages new in this upload are added as new review pages.
    */
   const replaceSite = (p, target, file) => {
-    const site = storeSite(file);
+    const site = linkToEarlierSite(storeSite(file), siteCandidates(p));
     const fileName = file.originalname.slice(0, 200);
     const current = latestVersion(target.id);
+    const group = (v) => v && (v.asset_base || v.stored_name);
     const siblings =
       current?.kind === 'html'
         ? q
             .screens.all(p.id)
             .map((sc) => ({ screen: sc, version: latestVersion(sc.id) }))
-            .filter(({ version }) => version?.stored_name === current.stored_name)
+            .filter(({ version }) => version?.kind === 'html' && group(version) === group(current))
         : [{ screen: target, version: current }];
     const updated = [];
     const updatedIds = new Set();
@@ -523,6 +547,12 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     return { note: `${note}.`, site };
   };
 
+  /** Added a page after the client submitted: point out that reopening the round lets them review it now. */
+  const lateAdditionNote = (p, titles) =>
+    p.stage === 'revising'
+      ? `${titles.join(', ')} added for round ${Math.min(p.current_round + 1, p.max_rounds)}. The client already submitted round ${p.current_round}; to have ${titles.length === 1 ? 'it' : 'them'} reviewed in round ${p.current_round}, click “Reopen round ${p.current_round}” above.`
+      : undefined;
+
   const uploadWarning = (fileName, result) => {
     const m = result?.missing;
     if (!m || (!m.total && !m.computerPaths.length && !m.pages.length)) return undefined;
@@ -532,13 +562,15 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   app.post('/api/projects/:projectId/screens', requireUser, upload.single('file'), (req, res) => {
     const p = ownedProject(req);
     if (p.stage === 'approved') fail(409, 'This project is already approved');
-    const title = cleanName(req.body.title) || cleanName(req.file?.originalname?.replace(/\.(pdf|html?|zip)$/i, ''));
+    // No title given: name the page after the file, the same way the upload page does (about.html -> "About").
+    const title =
+      cleanName(req.body.title) || cleanName(req.file ? pageTitle(req.file.originalname.replace(/\.(pdf|zip)$/i, '')) : '');
     if (!title) fail(400, 'Give the page a title');
     const fileName = req.file?.originalname?.slice(0, 200);
 
     // A zip with several pages becomes one review page per HTML file, all sharing the same upload.
     if (req.file && isZipName(fileName)) {
-      const site = storeSite(req.file);
+      const site = linkToEarlierSite(storeSite(req.file), siteCandidates(p));
       if (site.pages.length > 1) {
         withSite(site, () => {
           for (const page of site.pages) insertSiteVersion(p, createScreen(p, pageTitle(page)), fileName, site, page);
@@ -548,7 +580,12 @@ export function createApp(db, { mailer = createMailer() } = {}) {
         return res.json({
           ...projectBundle(q.project.get(p.id), { forClient: false }),
           upload_warning: uploadWarning(fileName, site),
-          upload_note: `${fileName} has ${titles.length} pages, so it was added as ${titles.length} review pages: ${titles.join(', ')}.`,
+          upload_note: [
+            `${fileName} has ${titles.length} pages, so it was added as ${titles.length} review pages: ${titles.join(', ')}.`,
+            lateAdditionNote(p, titles),
+          ]
+            .filter(Boolean)
+            .join(' '),
         });
       }
       withSite(site, () => insertSiteVersion(p, createScreen(p, title, String(req.body.note ?? '').slice(0, 1000)), fileName, site, site.entry));
@@ -556,6 +593,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       return res.json({
         ...projectBundle(q.project.get(p.id), { forClient: false }),
         upload_warning: uploadWarning(fileName, site),
+        upload_note: lateAdditionNote(p, [title]),
       });
     }
 
@@ -570,6 +608,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     res.json({
       ...projectBundle(q.project.get(p.id), { forClient: false }),
       upload_warning: uploadWarning(req.file?.originalname, result),
+      upload_note: lateAdditionNote(p, [title]),
     });
   });
 
@@ -602,8 +641,8 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     );
     db.prepare('DELETE FROM screens WHERE id = ?').run(s.id);
     // Pages split from one zip share its folder; only remove it once no page uses it.
-    const stillUsed = db.prepare('SELECT 1 FROM versions WHERE stored_name = ? LIMIT 1');
-    for (const f of files) if (!stillUsed.get(f.stored_name)) removeStored(f.stored_name);
+    const stillUsed = db.prepare('SELECT 1 FROM versions WHERE stored_name = ? OR asset_base = ? LIMIT 1');
+    for (const f of files) if (!stillUsed.get(f.stored_name, f.stored_name)) removeStored(f.stored_name);
     logEvent(p, req.user.name, 'screen_removed', `Page "${s.title}" removed`);
     res.json(projectBundle(q.project.get(p.id), { forClient: false }));
   });
@@ -1016,7 +1055,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     if (device) parts.shift();
     const rest = parts.join('/');
     if (!rest) return res.redirect(`/sites/${v.site_token}/${device ? `~${device}/` : ''}${v.entry}`);
-    serveSiteFile(res, v.stored_name, v.site_token, rest, device);
+    serveSiteFile(res, v.stored_name, v.site_token, rest, device, v.asset_base);
   });
 
   // ---------- errors ----------

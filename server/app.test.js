@@ -175,7 +175,9 @@ test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep el
   fd = new FormData();
   fd.append('file', new Blob(['<html><head><style>body{cursor:none}</style></head><body></body></html>'], { type: 'text/html' }), 'cursor.html');
   r = await api('POST', `/api/projects/${projectId}/screens`, fd);
-  const cursorPage = await fetch(`${base}/sites/${r.data.screens.at(-1).current_version.site_token}/index.html`);
+  const cursorVersion = r.data.screens.at(-1).current_version;
+  assert.equal(cursorVersion.entry, 'cursor.html', 'a single HTML file keeps its own name');
+  const cursorPage = await fetch(`${base}/sites/${cursorVersion.site_token}/${cursorVersion.entry}`);
   assert.match(await cursorPage.text(), /<script src="\/__portal\/frame\.js" data-custom-cursor="1"><\/script>/);
   await api('DELETE', `/api/projects/${projectId}/screens/${r.data.screens.at(-1).id}`);
 
@@ -206,9 +208,9 @@ test('HTML prototypes: upload .html and .zip, served sandboxed, comments keep el
   await api('DELETE', `/api/projects/${projectId}/screens/${r.data.screens.at(-1).id}`);
   assert.equal(single.title, 'Landing');
   assert.equal(single.current_version.kind, 'html');
-  assert.equal(single.current_version.entry, 'index.html');
+  assert.equal(single.current_version.entry, 'Landing.html');
 
-  let res = await fetch(`${base}/sites/${single.current_version.site_token}/index.html`);
+  let res = await fetch(`${base}/sites/${single.current_version.site_token}/Landing.html`);
   const page = await res.text();
   assert.match(res.headers.get('content-security-policy'), /^sandbox allow-scripts/);
   assert.doesNotMatch(res.headers.get('content-security-policy'), /allow-same-origin/);
@@ -367,4 +369,76 @@ test('a zip with several pages becomes one review page per HTML file, updated to
   r = await api('DELETE', `/api/projects/${projectId}/screens/${r.data.screens[0].id}`);
   page = await fetch(`${base}/sites/${r.data.screens[0].current_version.site_token}/play.html`);
   assert.equal(page.status, 200);
+});
+
+test('a page added later on its own uses the images and pages of the earlier upload', async () => {
+  const { zipSync, strToU8 } = await import('fflate');
+  await api('POST', '/api/auth/register', { email: 'later@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Trinax', notify_emails: 'pm@studio.test' });
+  const { id: projectId, share_token: shareToken } = r.data.project;
+  const nav = '<a href="index.html">Home</a><a href="play.html">Play</a><a href="about.html">About</a>';
+  const zip = zipSync({
+    'site/index.html': strToU8(`<html><body>${nav}<img src="images/hero.png"></body></html>`),
+    'site/play.html': strToU8(`<html><body>${nav}<img src="images/play.png"></body></html>`),
+    'site/images/hero.png': new Uint8Array([137, 80, 78, 71, 1]),
+    'site/images/play.png': new Uint8Array([137, 80, 78, 71, 2]),
+  });
+  let fd = new FormData();
+  fd.append('file', new Blob([zip], { type: 'application/zip' }), 'site.zip');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  assert.equal(r.data.screens.length, 2);
+  const firstUpload = r.data.screens[0].current_version.stored_name;
+
+  // client submits round 1, then the agency adds the forgotten About page on its own
+  for (const s of r.data.screens) {
+    await api('POST', `/api/share/${shareToken}/screens/${s.id}/reviewed`, { author_name: 'Jane' }, { agency: false });
+  }
+  await api('POST', `/api/share/${shareToken}/submit`, { author_name: 'Jane' }, { agency: false });
+  fd = new FormData();
+  fd.append('file', new Blob([`<html><body>${nav}<img src="images/play.png"><img src="images/about.png"></body></html>`], { type: 'text/html' }), 'about.html');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const about = r.data.screens.at(-1);
+  assert.equal(about.current_version.entry, 'about.html');
+  assert.equal(about.current_version.asset_base, firstUpload, 'linked to the earlier upload');
+  assert.equal(about.current_version.site_group, r.data.screens[0].current_version.site_group, 'same page group');
+  assert.deepEqual(r.data.upload_warning.files, ['images/about.png'], 'only the truly missing image is reported');
+  assert.deepEqual(r.data.upload_warning.pages, [], 'links to Home and Play resolve to the earlier upload');
+  assert.match(r.data.upload_note, /About added for round 2\. The client already submitted round 1; .*Reopen round 1/);
+  assert.equal(about.current_version.round, 2);
+
+  // reopening round 1 lets the client review the forgotten page there; it is relabelled as round 1
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'reopen' });
+  assert.equal(r.data.project.stage, 'review');
+  assert.equal(r.data.project.current_round, 1);
+  assert.equal(r.data.screens.at(-1).current_version.round, 1);
+  let sub = await api('POST', `/api/share/${shareToken}/submit`, { author_name: 'Jane' }, { agency: false });
+  assert.equal(sub.status, 409, 'Jane still has to review About');
+  await api('POST', `/api/share/${shareToken}/screens/${about.id}/reviewed`, { author_name: 'Jane' }, { agency: false });
+  sub = await api('POST', `/api/share/${shareToken}/submit`, { author_name: 'Jane' }, { agency: false });
+  assert.equal(sub.data.project.stage, 'revising', 'only the new page needed reviewing');
+
+  let res = await fetch(`${base}/sites/${about.current_version.site_token}/~desktop/images/play.png`);
+  assert.equal(res.status, 200, 'shared image served from the earlier upload');
+  assert.deepEqual([...new Uint8Array(await res.arrayBuffer())], [137, 80, 78, 71, 2]);
+  res = await fetch(`${base}/sites/${about.current_version.site_token}/~desktop/play.html`);
+  assert.match(await res.text(), /images\/play\.png/, 'other pages reachable through the menu');
+
+  // a later full zip including about.html updates the About page instead of adding a duplicate
+  const zip2 = zipSync({
+    'site/index.html': strToU8(`<html><body>${nav}v2</body></html>`),
+    'site/play.html': strToU8(`<html><body>${nav}v2</body></html>`),
+    'site/about.html': strToU8(`<html><body>${nav}about v2</body></html>`),
+  });
+  fd = new FormData();
+  fd.append('file', new Blob([zip2], { type: 'application/zip' }), 'site-v2.zip');
+  r = await api('POST', `/api/projects/${projectId}/screens/${r.data.screens[0].id}/versions`, fd);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.screens.length, 3, 'no duplicate About page');
+  assert.deepEqual(r.data.screens.map((s) => s.versions.length), [2, 2, 2]);
+
+  // deleting Home keeps the earlier upload that About's first version still relies on
+  await api('DELETE', `/api/projects/${projectId}/screens/${r.data.screens[0].id}`);
+  res = await fetch(`${base}/sites/${about.current_version.site_token}/images/play.png`);
+  assert.equal(res.status, 200);
 });

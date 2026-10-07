@@ -35,6 +35,13 @@ export default function ProjectAdmin() {
       );
       setData(bundle);
       if (note) setUploadNote(note);
+      // Pages added since a warning was shown are no longer missing.
+      const entries = new Set(bundle.screens.map((sc) => sc.current_version?.entry).filter(Boolean));
+      setUploadWarnings((cur) =>
+        cur
+          .map((w) => ({ ...w, pages: w.pages.filter((pg) => !entries.has(pg)) }))
+          .filter((w) => w.total > 0 || w.computerPaths.length > 0 || w.pages.length > 0),
+      );
       if (method === 'DELETE' && url.startsWith('/screens/')) {
         setUploadWarnings([]); // the page they referred to is gone
       } else if (method === 'POST' && url.endsWith('/versions')) {

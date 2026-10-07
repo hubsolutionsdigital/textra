@@ -152,6 +152,8 @@ function migrate(db) {
   if (!has('versions', 'site_token')) db.exec('ALTER TABLE versions ADD COLUMN site_token TEXT');
   if (!has('versions', 'entry')) db.exec('ALTER TABLE versions ADD COLUMN entry TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_versions_site_token ON versions(site_token)');
+  // A page added later on its own can draw images/other pages from an earlier upload of the same project.
+  if (!has('versions', 'asset_base')) db.exec('ALTER TABLE versions ADD COLUMN asset_base TEXT');
   if (!has('comments', 'anchor')) db.exec('ALTER TABLE comments ADD COLUMN anchor TEXT');
   if (!has('comments', 'device')) db.exec('ALTER TABLE comments ADD COLUMN device TEXT');
   if (!has('comments', 'status_changed_at')) {
