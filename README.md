@@ -93,6 +93,22 @@ sharing as homework. It's checked on the server too.
 
 Live games are kept in memory, so restarting the server ends any game in progress (quizzes and results are stored).
 
+### Running Quiz Arena as its own site
+
+Set `APP_MODE=quiz` to run Quiz Arena standalone, without the review portal: its own branding, sign-in and
+database. The home page is the player join screen (with a "Hosting a quiz? Sign in" link), hosts land on their
+quizzes after signing in, and the review portal's pages and API are switched off.
+
+```bash
+npm run build
+npm run start:quiz          # same as APP_MODE=quiz npm start
+```
+
+To deploy it next to the portal, add a **second service** from the same repository (on Railway: **New → GitHub
+repo**, same repo and branch), give it **its own volume** mounted at `/data`, and set the variables `APP_MODE=quiz`,
+`SECRET_KEY`, `TRUST_PROXY=true` and `SIGNUP_EMAIL_DOMAINS` (or `ALLOW_SIGNUPS=true`). Give it its own domain, e.g.
+`quiz.yourdomain.com`. Hosts and quizzes on the quiz site are separate from the portal's accounts.
+
 ## HTML prototypes
 
 - Clients switch between **Desktop (1440×900), Laptop (1280×800), Tablet (768×950) and Mobile (390×750)**. Tablet
@@ -169,6 +185,7 @@ Environment variables:
 | --- | --- | --- |
 | `PORT` | `3001` | HTTP port |
 | `DATA_DIR` | `./data` | SQLite database and uploaded files. Put this on a persistent volume. |
+| `APP_MODE` | unset | `quiz` runs Quiz Arena on its own, without the review portal. |
 | `APP_URL` | request host | Public URL used for links in emails, e.g. `https://review.yourstudio.com`. **Set this in production.** |
 | `SMTP_URL` | unset | SMTP connection, e.g. `smtps://user:pass@smtp.example.com`. Or use `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (`SMTP_SECURE=true` for implicit TLS). |
 | `MAIL_FROM` | `Design Review Portal <no-reply@localhost>` | Sender address for notification emails. |

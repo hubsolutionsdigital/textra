@@ -7,6 +7,7 @@ import AppHeader from '../components/AppHeader.jsx';
 import Modal from '../components/Modal.jsx';
 import { timeAgo } from '../util.js';
 import { SceneThumb } from './Scenes.jsx';
+import { QUIZ_ONLY } from '../appMode.js';
 import './quiz.css';
 
 const STARTERS = [
@@ -53,9 +54,7 @@ export default function QuizList() {
 
   return (
     <>
-      <AppHeader>
-        <span>🎮 Quiz Arena</span>
-      </AppHeader>
+      <AppHeader>{!QUIZ_ONLY && <span>🎮 Quiz Arena</span>}</AppHeader>
       <main className="container">
         <div className="page-head">
           <div>

@@ -243,3 +243,23 @@ test('quiz CRUD, practice and a full live game', async () => {
   hostFeed.close();
   adaFeed.close();
 });
+
+test('quiz-only mode switches the review portal off', async () => {
+  const solo = createApp(openDb(path.join(dir, 'solo.db')), { quizOnly: true, mailer: { send: async () => {} } });
+  const srv = await new Promise((resolve) => {
+    const s = solo.listen(0, () => resolve(s));
+  });
+  const url = `http://127.0.0.1:${srv.address().port}`;
+  const res = await fetch(`${url}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'q@quiz.test', name: 'Q', password: 'password1' }),
+  });
+  const c = res.headers.get('set-cookie').split(';')[0];
+  const get = (p) => fetch(url + p, { headers: { cookie: c } }).then((r) => r.status);
+  assert.equal(await get('/api/quizzes'), 200);
+  assert.equal(await get('/api/projects'), 404);
+  assert.equal(await get('/api/mail-settings'), 404);
+  srv.closeAllConnections();
+  srv.close();
+});

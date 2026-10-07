@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
+import { HOME, QUIZ_ONLY } from '../appMode.js';
 
 export default function Login() {
   const { user, setUser } = useAuth();
@@ -12,7 +13,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  if (user) return <Navigate to={location.state?.from || '/projects'} replace />;
+  if (user) return <Navigate to={location.state?.from || HOME} replace />;
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -23,7 +24,7 @@ export default function Login() {
     try {
       const d = await api('POST', `/api/auth/${mode}`, form);
       setUser(d.user);
-      navigate(location.state?.from || '/projects', { replace: true });
+      navigate(location.state?.from || HOME, { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -34,16 +35,17 @@ export default function Login() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="brand">💬 Design Review Portal</div>
-        <h1>{mode === 'login' ? 'Welcome back' : 'Create your studio account'}</h1>
+        <div className="brand">{QUIZ_ONLY ? '🎮 Quiz Arena' : '💬 Design Review Portal'}</div>
+        <h1>{mode === 'login' ? 'Welcome back' : QUIZ_ONLY ? 'Create your host account' : 'Create your studio account'}</h1>
         <p className="muted">
-          Share UI/UX PDFs with clients, collect guided feedback and run revision rounds. Only your team needs an account,
-          and clients just open the link.
+          {QUIZ_ONLY
+            ? 'Build live quizzes with drag-and-drop rounds and animated graphics. Only hosts need an account; players join with a PIN.'
+            : 'Share UI/UX PDFs with clients, collect guided feedback and run revision rounds. Only your team needs an account, and clients just open the link.'}
         </p>
         <form onSubmit={submit} className="stack">
           {mode === 'register' && (
             <label>
-              Agency / studio name
+              {QUIZ_ONLY ? 'Your name or team' : 'Agency / studio name'}
               <input value={form.name} onChange={set('name')} required autoFocus />
             </label>
           )}

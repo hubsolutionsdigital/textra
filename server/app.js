@@ -95,7 +95,7 @@ function parseAnchor(raw) {
   };
 }
 
-export function createApp(db, { mailer = createMailer() } = {}) {
+export function createApp(db, { mailer = createMailer(), quizOnly = false } = {}) {
   const app = express();
   const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 150 * 1024 * 1024 } });
   const imageUpload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 15 * 1024 * 1024, files: 6 } });
@@ -103,6 +103,12 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? true : process.env.TRUST_PROXY);
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
+
+  // A quiz-only deployment keeps accounts and Quiz Arena, and switches the review portal off.
+  if (quizOnly) {
+    const off = (req, res) => res.status(404).json({ error: 'Not found' });
+    app.use(['/api/projects', '/api/share', '/api/team', '/api/mail-settings', '/sites', '/__portal'], off);
+  }
 
   // ---------- data helpers ----------
 

@@ -8,6 +8,7 @@ import { AnswerInput, Reveal } from './answers.jsx';
 import { Backdrop, CountUp, TimerBar, useCountdown, useLiveFeed } from './GameChrome.jsx';
 import { AVATARS, REACTIONS, RESULT_COPY, TYPES, ordinal, pick, resultTone } from './meta.js';
 import Scene from './Scenes.jsx';
+import { QUIZ_ONLY } from '../appMode.js';
 import './quiz.css';
 
 const seatKey = (pin) => `qz-seat-${pin}`;
@@ -113,6 +114,11 @@ export function JoinGame() {
             </button>
             {error && <p className="qz-error">{error}</p>}
           </form>
+        )}
+        {QUIZ_ONLY && (
+          <Link to="/quizzes" className="qz-host-link">
+            Hosting a quiz? Sign in →
+          </Link>
         )}
       </div>
     </Backdrop>
