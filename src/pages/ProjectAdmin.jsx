@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, fileUrls } from '../api.js';
 import AppHeader from '../components/AppHeader.jsx';
 import CommentCard from '../components/CommentCard.jsx';
+import Modal from '../components/Modal.jsx';
 import { isActionable, versionLabel } from '../guidance.js';
 import { shareUrl, stageInfo } from '../stage.js';
 import { formatDate, plural } from '../util.js';
@@ -42,7 +43,7 @@ export default function ProjectAdmin() {
           .map((w) => ({ ...w, pages: w.pages.filter((pg) => !entries.has(pg)) }))
           .filter((w) => w.total > 0 || w.computerPaths.length > 0 || w.pages.length > 0),
       );
-      if (method === 'DELETE' && url.startsWith('/screens/')) {
+      if ((method === 'DELETE' && url.startsWith('/screens/')) || url === '/screens/bulk-delete') {
         setUploadWarnings([]); // the page they referred to is gone
       } else if (method === 'POST' && url.endsWith('/versions')) {
         // A replacement upload supersedes earlier warnings (e.g. the zip that fixes a lone index.html).
@@ -388,7 +389,22 @@ function uploadTarget(project) {
 
 function PagesTab({ project, screens, comments, mutate }) {
   const [busy, setBusy] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [deleting, setDeleting] = useState(null); // the pages awaiting confirmation
   const locked = project.stage === 'approved';
+  const chosen = screens.filter((s) => selected.has(s.id));
+
+  const toggle = (id) =>
+    setSelected((cur) => {
+      const next = new Set(cur);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  const stopSelecting = () => {
+    setSelecting(false);
+    setSelected(new Set());
+  };
 
   const addFiles = async (files) => {
     setBusy(true);
@@ -444,6 +460,46 @@ function PagesTab({ project, screens, comments, mutate }) {
       {screens.length > 0 && project.stage !== 'approved' && (
         <div className="muted small">New uploads will be shown to the client as {uploadTarget(project)}.</div>
       )}
+      {screens.length > 0 && !locked && (
+        <div className="pages-toolbar">
+          {selecting ? (
+            <>
+              <label className="check-inline">
+                <input
+                  type="checkbox"
+                  checked={chosen.length === screens.length}
+                  ref={(el) => el && (el.indeterminate = chosen.length > 0 && chosen.length < screens.length)}
+                  onChange={(e) => setSelected(new Set(e.target.checked ? screens.map((s) => s.id) : []))}
+                />
+                {chosen.length ? `${chosen.length} of ${screens.length} selected` : 'Select all'}
+              </label>
+              <div className="grow" />
+              <button className="btn btn-sm btn-ghost" onClick={stopSelecting}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-sm btn-danger"
+                disabled={!chosen.length}
+                onClick={() => setDeleting(chosen)}
+              >
+                Delete selected{chosen.length ? ` (${chosen.length})` : ''}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="grow" />
+              {screens.length > 1 && (
+                <button className="btn btn-sm btn-ghost" onClick={() => setSelecting(true)}>
+                  Select pages
+                </button>
+              )}
+              <button className="btn btn-sm btn-ghost danger" onClick={() => setDeleting(screens)}>
+                Delete all pages
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {screens.map((s, i) => (
         <ScreenRow
           key={s.id}
@@ -454,13 +510,103 @@ function PagesTab({ project, screens, comments, mutate }) {
           onMove={(dir) => move(i, dir)}
           first={i === 0}
           last={i === screens.length - 1}
+          selecting={selecting}
+          selected={selected.has(s.id)}
+          onToggle={() => toggle(s.id)}
         />
       ))}
+      {deleting && (
+        <DeletePagesModal
+          pages={deleting}
+          all={deleting.length === screens.length}
+          commentCount={comments.filter((c) => deleting.some((d) => d.id === c.screen_id)).length}
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            const all = deleting.length === screens.length;
+            await mutate('POST', '/screens/bulk-delete', all ? { all: true } : { ids: deleting.map((d) => d.id) });
+            setDeleting(null);
+            stopSelecting();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function ScreenRow({ project, screen, comments, mutate, onMove, first, last }) {
+/** Two-step confirmation: review what will go, then type DELETE. */
+function DeletePagesModal({ pages, all, commentCount, onClose, onConfirm }) {
+  const [step, setStep] = useState(1);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const what = all && pages.length > 1 ? `all ${plural(pages.length, 'page')}` : plural(pages.length, 'page');
+
+  return (
+    <Modal onClose={busy ? undefined : onClose}>
+      <div className="big-emoji">🗑️</div>
+      <h2>Delete {what}?</h2>
+      {step === 1 ? (
+        <>
+          <ul className="delete-list">
+            {pages.slice(0, 8).map((pg) => (
+              <li key={pg.id}>{pg.title}</li>
+            ))}
+            {pages.length > 8 && <li className="muted">and {pages.length - 8} more</li>}
+          </ul>
+          <div className="warn-box">
+            This removes the uploaded files and every earlier version of {pages.length === 1 ? 'this page' : 'these pages'}
+            {commentCount > 0 ? <>, plus <strong>{plural(commentCount, 'client comment')}</strong> on them</> : ''}. The
+            share link keeps working, so you can upload the correct designs straight after.
+          </div>
+          <div className="row-end">
+            <button className="btn btn-ghost" onClick={onClose}>
+              Cancel
+            </button>
+            <button className="btn btn-danger" onClick={() => setStep(2)}>
+              Continue
+            </button>
+          </div>
+        </>
+      ) : (
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            setError('');
+            try {
+              await onConfirm();
+            } catch (err) {
+              setError(err.message);
+              setBusy(false);
+            }
+          }}
+        >
+          <p className="muted">
+            This cannot be undone. Type <strong>DELETE</strong> to confirm.
+          </p>
+          <input
+            autoFocus
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            placeholder="DELETE"
+            aria-label="Type DELETE to confirm"
+          />
+          {error && <div className="form-error">{error}</div>}
+          <div className="row-end">
+            <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setStep(1)}>
+              Back
+            </button>
+            <button className="btn btn-danger" disabled={busy || typed.trim().toUpperCase() !== 'DELETE'}>
+              {busy ? 'Deleting…' : `Delete ${what}`}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+function ScreenRow({ project, screen, comments, mutate, onMove, first, last, selecting, selected, onToggle }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(screen.title);
   const [note, setNote] = useState(screen.note);
@@ -476,7 +622,16 @@ function ScreenRow({ project, screen, comments, mutate, onMove, first, last }) {
   };
 
   return (
-    <div className="screen-row">
+    <div className={`screen-row ${selected ? 'selected' : ''}`}>
+      {selecting && (
+        <input
+          type="checkbox"
+          className="screen-check"
+          checked={selected}
+          onChange={onToggle}
+          aria-label={`Select ${screen.title}`}
+        />
+      )}
       <div className="reorder">
         <button className="icon-btn" disabled={first} onClick={() => onMove(-1)} aria-label="Move up">
           ▲

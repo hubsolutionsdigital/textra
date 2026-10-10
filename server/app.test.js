@@ -442,3 +442,48 @@ test('a page added later on its own uses the images and pages of the earlier upl
   res = await fetch(`${base}/sites/${about.current_version.site_token}/images/play.png`);
   assert.equal(res.status, 200);
 });
+
+test('agency can delete several pages, or all of them, in one go', async () => {
+  const { zipSync, strToU8 } = await import('fflate');
+  await api('POST', '/api/auth/register', { email: 'bulk@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Wrong upload', notify_emails: 'pm@studio.test' });
+  const { id: projectId, share_token: shareToken } = r.data.project;
+  const zip = zipSync({
+    'site/index.html': strToU8('<html><body><a href="a.html">A</a><a href="b.html">B</a></body></html>'),
+    'site/a.html': strToU8('<html>a</html>'),
+    'site/b.html': strToU8('<html>b</html>'),
+  });
+  let fd = new FormData();
+  fd.append('file', new Blob([zip], { type: 'application/zip' }), 'site.zip');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  fd = new FormData();
+  fd.append('file', pdfBlob(), 'extra.pdf');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  assert.equal(r.data.screens.length, 4);
+  const [home, a, b, pdf] = r.data.screens;
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'Jane' }, { agency: false });
+  await api('POST', `/api/share/${shareToken}/comments`, { author_name: 'Jane', screen_id: a.id, kind: 'love', x: 0.1, y: 0.1 }, { agency: false });
+
+  r = await api('POST', `/api/projects/${projectId}/screens/bulk-delete`, { ids: [] });
+  assert.equal(r.status, 400);
+  r = await api('POST', `/api/projects/${projectId}/screens/bulk-delete`, { ids: [a.id, b.id, 999999] });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.deepEqual(r.data.screens.map((s) => s.id), [home.id, pdf.id]);
+  assert.equal(r.data.comments.length, 0, 'comments on deleted pages go too');
+  let page = await fetch(`${base}/sites/${home.current_version.site_token}/index.html`);
+  assert.equal(page.status, 200, 'shared zip kept for the remaining page');
+
+  // another agency cannot touch these pages
+  const otherCookie = cookie;
+  await api('POST', '/api/auth/register', { email: 'bulk2@studio.test', name: 'Other', password: 'password1' });
+  r = await api('POST', `/api/projects/${projectId}/screens/bulk-delete`, { all: true });
+  assert.equal(r.status, 404);
+  cookie = otherCookie;
+
+  r = await api('POST', `/api/projects/${projectId}/screens/bulk-delete`, { all: true });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.screens.length, 0);
+  assert.match(r.data.events[0].message, /All 2 pages removed/);
+  page = await fetch(`${base}/sites/${home.current_version.site_token}/index.html`);
+  assert.equal(page.status, 404, 'files removed once no page uses them');
+});

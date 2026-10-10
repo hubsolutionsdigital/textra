@@ -630,20 +630,47 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     res.json(projectBundle(q.project.get(p.id), { forClient: false }));
   });
 
+  /** Deletes pages with their versions, comments and files; returns the titles removed. */
+  const deleteScreens = (p, screens) => {
+    const files = [];
+    const versionFiles = db.prepare('SELECT stored_name FROM versions WHERE screen_id = ?');
+    const attachmentFiles = db.prepare(
+      'SELECT a.stored_name FROM attachments a JOIN comments c ON c.id = a.comment_id WHERE c.screen_id = ?',
+    );
+    const remove = db.prepare('DELETE FROM screens WHERE id = ? AND project_id = ?');
+    tx(db, () => {
+      for (const s of screens) {
+        files.push(...versionFiles.all(s.id), ...attachmentFiles.all(s.id));
+        remove.run(s.id, p.id);
+      }
+    });
+    // Pages split from one zip share its folder; only remove it once no page uses it.
+    const stillUsed = db.prepare('SELECT 1 FROM versions WHERE stored_name = ? OR asset_base = ? LIMIT 1');
+    for (const f of new Set(files.map((f) => f.stored_name))) if (!stillUsed.get(f, f)) removeStored(f);
+  };
+
   app.delete('/api/projects/:projectId/screens/:screenId', requireUser, (req, res) => {
     const p = ownedProject(req);
     const s = q.screen.get(Number(req.params.screenId), p.id) ?? fail(404, 'Page not found');
-    const files = db.prepare('SELECT stored_name FROM versions WHERE screen_id = ?').all(s.id);
-    files.push(
-      ...db
-        .prepare('SELECT a.stored_name FROM attachments a JOIN comments c ON c.id = a.comment_id WHERE c.screen_id = ?')
-        .all(s.id),
-    );
-    db.prepare('DELETE FROM screens WHERE id = ?').run(s.id);
-    // Pages split from one zip share its folder; only remove it once no page uses it.
-    const stillUsed = db.prepare('SELECT 1 FROM versions WHERE stored_name = ? OR asset_base = ? LIMIT 1');
-    for (const f of files) if (!stillUsed.get(f.stored_name, f.stored_name)) removeStored(f.stored_name);
+    deleteScreens(p, [s]);
     logEvent(p, req.user.name, 'screen_removed', `Page "${s.title}" removed`);
+    res.json(projectBundle(q.project.get(p.id), { forClient: false }));
+  });
+
+  /** Removes several pages at once: `{ all: true }` or `{ ids: [...] }`. */
+  app.post('/api/projects/:projectId/screens/bulk-delete', requireUser, (req, res) => {
+    const p = ownedProject(req);
+    if (p.stage === 'approved') fail(400, 'This project is approved, so its pages can no longer be deleted');
+    const all = db.prepare('SELECT * FROM screens WHERE project_id = ? ORDER BY position').all(p.id);
+    const ids = new Set((Array.isArray(req.body.ids) ? req.body.ids : []).map(Number));
+    const screens = req.body.all === true ? all : all.filter((s) => ids.has(s.id));
+    if (!screens.length) fail(400, 'Choose at least one page to delete');
+    deleteScreens(p, screens);
+    const msg =
+      screens.length === all.length
+        ? `All ${screens.length} page${screens.length === 1 ? '' : 's'} removed`
+        : `${screens.length} page${screens.length === 1 ? '' : 's'} removed: ${screens.map((s) => `"${s.title}"`).join(', ')}`;
+    logEvent(p, req.user.name, 'screen_removed', msg);
     res.json(projectBundle(q.project.get(p.id), { forClient: false }));
   });
 

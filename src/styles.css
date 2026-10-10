@@ -219,6 +219,18 @@ label {
 .danger {
   color: var(--danger) !important;
 }
+.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .link-btn {
   background: none;
   border: none;
@@ -570,6 +582,37 @@ label {
   padding: 14px 16px;
   box-shadow: var(--shadow);
   flex-wrap: wrap;
+}
+.screen-row.selected {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+.screen-check {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--danger);
+  cursor: pointer;
+}
+.pages-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.check-inline {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 0 0 0 17px;
+  gap: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.delete-list {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  max-height: 200px;
+  overflow: auto;
 }
 .reorder {
   display: flex;

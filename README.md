@@ -16,6 +16,8 @@ approval and a "development has started" hand-off.
 - Upload one design per page: a **PDF**, a single **.html** file, or a **.zip** of an HTML prototype (HTML + CSS,
   JS, images and fonts) so animations, scroll effects and interactions work as built.
   Drag & drop several at once, then reorder or rename them, and add a note per page.
+- Wrong upload? **Select pages** to delete several at once, or **Delete all pages** to start over. Both ask twice
+  (a summary, then typing DELETE), because the pages' comments are deleted too. The client link stays the same.
 - Copy the client link. The same link works for every round.
 - See feedback live, mark comments **Done** or **Discussed**, and reply. Replies show to the client in the next round.
 - When the client submits a round, upload updated PDFs, then click **Open round N+1**. After the last round, upload the finals and click **Send final for approval**.
