@@ -568,18 +568,20 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
   const index = screens.findIndex((s) => s.id === Number(screenId));
   const screen = screens[index];
   const isHtml = screen?.current_version?.kind === 'html';
-  // The walkthrough runs automatically the first time someone reviews a PDF page and an HTML page here.
-  const tourKey = `review-tour-steps:${token}:${isHtml ? 'html' : 'pdf'}`;
-  const [touring, setTouring] = useState(false);
+  // The walkthrough runs automatically, and must be stepped through, the first time someone reviews a PDF
+  // page and an HTML page in each round. Later rounds add how to find the feedback from earlier rounds.
+  const round = project.current_round;
+  const tourKey = `review-tour-steps:${token}:${isHtml ? 'html' : 'pdf'}${round > 1 ? `:r${round}` : ''}`;
+  const [touring, setTouring] = useState(null); // null, 'required' (first time) or 'replay'
   useEffect(() => {
     if (project.stage === 'review' && screen && !storage.get(tourKey)) {
-      const t = setTimeout(() => setTouring(true), 700); // let the design and controls render first
+      const t = setTimeout(() => setTouring('required'), 700); // let the design and controls render first
       return () => clearTimeout(t);
     }
   }, [tourKey, project.stage, screen]);
   const endTour = () => {
     storage.set(tourKey, '1');
-    setTouring(false);
+    setTouring(null);
   };
 
   if (!screen) {
@@ -619,9 +621,15 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
   return (
     <div className="viewer-page client">
       {touring && reviewing && (
-        <GuidedTour steps={reviewSteps({ isHtml, project, nextScreen })} onClose={endTour} />
+        <GuidedTour
+          steps={reviewSteps({ isHtml, project, nextScreen, data, screen })}
+          onClose={endTour}
+          required={touring === 'required'}
+        />
       )}
-      {reviewing && !touring && <HelpButton onClick={() => setTouring(true)} label="How to review this page" inViewer />}
+      {reviewing && !touring && (
+        <HelpButton onClick={() => setTouring('replay')} label="How to review this page" inViewer />
+      )}
       <ReviewViewer
         key={screen.id}
         project={project}
@@ -680,16 +688,85 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
 }
 
 /** The in-page walkthrough. Steps point at elements marked data-tour="…"; missing ones are skipped. */
-function reviewSteps({ isHtml, project, nextScreen }) {
-  const focus = roundFocus(project.current_round, project.max_rounds);
+function reviewSteps({ isHtml, project, nextScreen, data, screen }) {
+  const round = project.current_round;
+  const focus = roundFocus(round, project.max_rounds);
+  const prev = round - 1;
+  const earlier = round > 1 ? data.comments.filter((c) => c.round < round && c.screen_id === screen.id) : [];
+  const allEarlier = round > 1 ? data.comments.filter((c) => c.round < round) : [];
+  const changed = allEarlier.filter((c) => c.status === 'done').length;
   return [
-    {
-      target: null,
-      title: '👋 A quick tour (about a minute)',
+    round === 1
+      ? {
+          target: null,
+          title: '👋 A quick tour (about a minute)',
+          body: (
+            <p>
+              Here’s how to review this page and leave feedback. Forgot something later? Click the round{' '}
+              <strong>?</strong> button in the bottom-left corner to see this again.
+            </p>
+          ),
+        }
+      : {
+          target: null,
+          title: `🔁 Welcome to round ${round}`,
+          body: (
+            <>
+              <p>
+                We’ve updated the designs based on your round {prev} feedback
+                {changed > 0 ? <> and changed <strong>{plural(changed, 'thing')}</strong> you asked for</> : ''}.
+              </p>
+              <p>
+                Your earlier feedback hasn’t gone anywhere. This quick tour shows where to find it, and how to review
+                this round. You can replay it any time with the <strong>?</strong> button in the bottom-left corner.
+              </p>
+            </>
+          ),
+        },
+    round > 1 && {
+      target: 'canvas',
+      title: `👻 Your round ${prev} comments are still on the design`,
+      body: (
+        <>
+          <p>
+            The <strong>faint dots</strong> are your comments from earlier rounds. Hover over one (or tap it on a phone or
+            tablet) to see what you said and what we did about it.
+          </p>
+          <p className="muted small">
+            {earlier.length
+              ? `This page has ${plural(earlier.length, 'earlier comment')}.`
+              : 'This page has no earlier comments, but other pages might.'}
+          </p>
+        </>
+      ),
+    },
+    round > 1 && {
+      target: 'comments',
+      title: '🗂 See everything in “Earlier rounds”',
+      body: (
+        <>
+          <p>
+            Open the <strong>Earlier rounds</strong> tab to read all your previous feedback on this page, with our
+            replies. Each one shows what happened:
+          </p>
+          <ul>
+            <li>✅ <strong>Done</strong>: we made the change</li>
+            <li>💬 <strong>Discussed</strong>: we’ve replied or talked it through</li>
+            <li>⏳ <strong>Working on it</strong>: still in progress</li>
+          </ul>
+          <p>
+            New comments go in the <strong>Round {round}</strong> tab. Please check that the changes look right to you.
+          </p>
+        </>
+      ),
+    },
+    round > 1 && {
+      target: 'earlier',
+      title: '👁 Show or hide earlier feedback',
       body: (
         <p>
-          Here’s how to review this page and leave feedback. Forgot something later? Click the round{' '}
-          <strong>?</strong> button in the bottom-left corner to see this again.
+          If the dots get in the way, untick <strong>Earlier feedback</strong> to hide them for a clean look at the new
+          design. Tick it again to bring them back.
         </p>
       ),
     },
@@ -735,15 +812,13 @@ function reviewSteps({ isHtml, project, nextScreen }) {
         </>
       ),
     },
-    {
+    round === 1 && {
       target: 'comments',
       title: '🗂 Your comments',
       body: (
         <p>
-          Everything you say on this page is listed here; click one to jump to it.{' '}
-          {project.current_round > 1
-            ? '“Earlier rounds” shows your previous feedback and what the team changed.'
-            : 'You can remove a comment before you submit.'}
+          Everything you say on this page is listed here; click one to jump to it. You can remove a comment before
+          you submit.
         </p>
       ),
     },
@@ -802,6 +877,24 @@ function TourModal({ data, name, token, force }) {
       </p>
       {project.welcome_message && !returning && <p className="welcome">{project.welcome_message}</p>}
     </>,
+    returning && (
+      <>
+        <div className="big-emoji">👻</div>
+        <h2>Your round {project.current_round - 1} feedback is still here</h2>
+        <div className="tour-demo">
+          <div className="preset ghost-demo">● Faint dots</div>
+          <div className="preset">✅ Done</div>
+          <div className="preset">💬 Discussed</div>
+          <div className="preset">⏳ Working on it</div>
+        </div>
+        <p>
+          On each page, the <strong>faint dots</strong> on the design are your earlier comments: hover or tap one to see
+          what you said and what we did about it. The <strong>Earlier rounds</strong> tab next to the design lists them
+          all, with our replies.
+        </p>
+        <p className="muted">We’ll point these out when you open the first page.</p>
+      </>
+    ),
     <>
       <div className="big-emoji">📋</div>
       <h2>Here’s what to review</h2>
@@ -837,11 +930,12 @@ function TourModal({ data, name, token, force }) {
         ))}
       </ul>
     </>,
-  ];
+  ].filter(Boolean);
   const last = step === steps.length - 1;
 
   return (
-    <Modal onClose={close} className="tour">
+    // The first time in each round it has to be read through; replays from the ? button can be closed.
+    <Modal onClose={force ? close : undefined} className="tour">
       {steps[step]}
       <div className="tour-footer">
         <div className="dots">

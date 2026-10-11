@@ -33,6 +33,9 @@ approval and a "development has started" hand-off.
 - A checklist of pages, a progress bar, and **Done with this page → next page** keep them moving.
 - The first time they open a page, a **step-by-step walkthrough** highlights each control in turn: screen sizes,
   Comment vs Interact, how to comment, the comment list, this round's focus, "Done with this page" and Submit.
+  It runs again at the start of every round and has to be stepped through (no Skip the first time). From round 2 it
+  also shows where earlier feedback lives: the faint dots on the design, the **Earlier rounds** tab with each
+  comment's status (Done / Discussed / Working on it), and the **Earlier feedback** show/hide toggle.
   A floating **?** button (bottom-left) brings it back any time, and on the pages overview it reopens the welcome
   guide. On a phone or tablet, the design opens at that size.
 - Click anywhere on the design to comment. The comment popup leads with positive presets

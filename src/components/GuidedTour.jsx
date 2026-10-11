@@ -7,7 +7,8 @@ const CARD_W = 340;
  * Step-by-step walkthrough that spotlights real controls. Each step points at an element marked with
  * data-tour="<target>" (or sits centred when target is null); steps whose element isn't on screen are skipped.
  */
-export default function GuidedTour({ steps, onClose }) {
+/** `required`: the first, automatic run must be stepped through (no Skip, Escape does nothing). */
+export default function GuidedTour({ steps, onClose, required = false }) {
   const available = steps.filter((s) => !s.target || document.querySelector(`[data-tour="${s.target}"]`));
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState(null);
@@ -46,7 +47,7 @@ export default function GuidedTour({ steps, onClose }) {
 
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !required) onClose();
       if (e.key === 'ArrowRight' || e.key === 'Enter') next();
       if (e.key === 'ArrowLeft' && index > 0) setIndex(index - 1);
     };
@@ -95,9 +96,11 @@ export default function GuidedTour({ steps, onClose }) {
         <h3>{step.title}</h3>
         <div className="tour-body">{step.body}</div>
         <div className="tour-actions">
-          <button className="link-btn muted-link" onClick={onClose}>
-            Skip tour
-          </button>
+          {!required && (
+            <button className="link-btn muted-link" onClick={onClose}>
+              Skip tour
+            </button>
+          )}
           <div className="grow" />
           {index > 0 && (
             <button className="btn btn-sm btn-ghost" onClick={() => setIndex(index - 1)}>

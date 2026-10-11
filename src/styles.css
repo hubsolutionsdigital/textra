@@ -980,6 +980,10 @@ label {
 .preset:hover {
   transform: translateY(-1px);
 }
+.preset.ghost-demo {
+  opacity: 0.55;
+  border-style: dashed;
+}
 .preset.positive {
   background: var(--positive-soft);
   border-color: #cfe7e3;

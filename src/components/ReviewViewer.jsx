@@ -256,7 +256,7 @@ export default function ReviewViewer({
       <div className="viewer-toolbar">
         {toolbar}
         <div className="toolbar-spacer" />
-        <label className="toggle">
+        <label className="toggle" data-tour="earlier">
           <input type="checkbox" checked={showPast} onChange={(e) => setShowPast(e.target.checked)} />
           <span>Earlier feedback</span>
         </label>
