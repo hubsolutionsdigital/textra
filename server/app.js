@@ -499,52 +499,72 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   };
 
   /**
-   * New version of an HTML page. Pages that came from the same upload (same stored site) are updated
-   * together, matched by file name; pages new in this upload are added as new review pages.
+   * Places an unpacked HTML upload: pages whose file name matches an existing review page get a new
+   * version of it (preferring the pages of the same earlier upload), and the rest become new pages.
+   * With a target (its "Upload new version" button), the target is always updated.
    */
-  const replaceSite = (p, target, file) => {
-    const site = linkToEarlierSite(storeSite(file), siteCandidates(p));
-    const fileName = file.originalname.slice(0, 200);
-    const current = latestVersion(target.id);
+  const placeSite = (p, site, fileName, { target, title, note = '' } = {}) => {
     const group = (v) => v && (v.asset_base || v.stored_name);
-    const siblings =
-      current?.kind === 'html'
-        ? q
-            .screens.all(p.id)
-            .map((sc) => ({ screen: sc, version: latestVersion(sc.id) }))
-            .filter(({ version }) => version?.kind === 'html' && group(version) === group(current))
-        : [{ screen: target, version: current }];
+    const existing = q.screens
+      .all(p.id)
+      .map((sc) => ({ screen: sc, version: latestVersion(sc.id) }))
+      .filter(({ version }) => version?.kind === 'html' && site.pages.includes(version.entry));
+    const overlap = (g) => new Set(existing.filter((e) => group(e.version) === g).map((e) => e.version.entry)).size;
+    const targetVersion = target && latestVersion(target.id);
+    const preferred =
+      targetVersion?.kind === 'html'
+        ? group(targetVersion)
+        : existing.map((e) => group(e.version)).sort((a, b) => overlap(b) - overlap(a))[0];
+    // Same upload first, then any other page with that file name (e.g. one added on its own later).
+    existing.sort((a, b) => (group(b.version) === preferred) - (group(a.version) === preferred));
+
     const updated = [];
-    const updatedIds = new Set();
     const added = [];
+    const claimed = new Set();
+    const updatedIds = new Set();
     withSite(site, () => {
-      const claimed = new Set();
-      for (const { screen, version } of siblings) {
-        if (version?.kind === 'html' && site.pages.includes(version.entry) && !claimed.has(version.entry)) {
-          insertSiteVersion(p, screen.id, fileName, site, version.entry);
-          claimed.add(version.entry);
-          updated.push(screen.title);
-          updatedIds.add(screen.id);
-        }
+      for (const { screen, version } of existing) {
+        if (claimed.has(version.entry) || updatedIds.has(screen.id)) continue;
+        insertSiteVersion(p, screen.id, fileName, site, version.entry);
+        claimed.add(version.entry);
+        updatedIds.add(screen.id);
+        updated.push(screen.title);
       }
-      if (!updatedIds.has(target.id)) {
+      if (target && !updatedIds.has(target.id)) {
         const entry = site.pages.find((pg) => !claimed.has(pg)) ?? site.entry;
         insertSiteVersion(p, target.id, fileName, site, entry);
         claimed.add(entry);
         updated.push(target.title);
       }
-      if (site.pages.length > 1) {
-        for (const page of site.pages.filter((pg) => !claimed.has(pg))) {
+      const rest = site.pages.filter((pg) => !claimed.has(pg));
+      if (!target && !updated.length && rest.length <= 1) {
+        // A single new page keeps the title given for it.
+        insertSiteVersion(p, createScreen(p, title || pageTitle(site.entry), note), fileName, site, site.entry);
+        added.push(title || pageTitle(site.entry));
+      } else if (site.pages.length > 1) {
+        for (const page of rest) {
           insertSiteVersion(p, createScreen(p, pageTitle(page)), fileName, site, page);
           added.push(pageTitle(page));
         }
       }
     });
+    return { updated, added };
+  };
+
+  const versionNote = (p, fileName, updated, added) => {
     const round = Math.min(uploadRound(p), p.max_rounds + 1);
     const label = round > p.max_rounds ? 'final version' : `round ${round} version`;
     let note = `New ${label} from ${fileName}: updated ${updated.join(', ')}`;
     if (added.length) note += `; added new page${added.length === 1 ? '' : 's'} ${added.join(', ')}`;
-    return { note: `${note}.`, site };
+    return `${note}.`;
+  };
+
+  /** New version of an HTML page from its "Upload new version" button. */
+  const replaceSite = (p, target, file) => {
+    const site = linkToEarlierSite(storeSite(file), siteCandidates(p));
+    const fileName = file.originalname.slice(0, 200);
+    const { updated, added } = placeSite(p, site, fileName, { target });
+    return { note: versionNote(p, fileName, updated, added), site };
   };
 
   /** Added a page after the client submitted: point out that reopening the round lets them review it now. */
@@ -568,32 +588,29 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     if (!title) fail(400, 'Give the page a title');
     const fileName = req.file?.originalname?.slice(0, 200);
 
-    // A zip with several pages becomes one review page per HTML file, all sharing the same upload.
-    if (req.file && isZipName(fileName)) {
+    // HTML/zip: a zip with several pages becomes one review page per HTML file, all sharing the same upload.
+    // Pages that already exist (same file name) get a new version instead of a duplicate page, so dropping
+    // the revised zip here works the same as "Upload new version".
+    if (req.file && (isZipName(fileName) || isHtmlName(fileName))) {
       const site = linkToEarlierSite(storeSite(req.file), siteCandidates(p));
-      if (site.pages.length > 1) {
-        withSite(site, () => {
-          for (const page of site.pages) insertSiteVersion(p, createScreen(p, pageTitle(page)), fileName, site, page);
-        });
-        const titles = site.pages.map(pageTitle);
-        logEvent(p, req.user.name, 'screen_added', `${fileName} added as ${titles.length} pages: ${titles.join(', ')}`);
-        return res.json({
-          ...projectBundle(q.project.get(p.id), { forClient: false }),
-          upload_warning: uploadWarning(fileName, site),
-          upload_note: [
-            `${fileName} has ${titles.length} pages, so it was added as ${titles.length} review pages: ${titles.join(', ')}.`,
-            lateAdditionNote(p, titles),
-          ]
-            .filter(Boolean)
-            .join(' '),
-        });
+      const { updated, added } = placeSite(p, site, fileName, {
+        title,
+        note: String(req.body.note ?? '').slice(0, 1000),
+      });
+      let note;
+      if (updated.length) {
+        note = versionNote(p, fileName, updated, added);
+        logEvent(p, req.user.name, 'version_uploaded', note);
+      } else if (added.length > 1) {
+        note = `${fileName} has ${added.length} pages, so it was added as ${added.length} review pages: ${added.join(', ')}.`;
+        logEvent(p, req.user.name, 'screen_added', `${fileName} added as ${added.length} pages: ${added.join(', ')}`);
+      } else {
+        logEvent(p, req.user.name, 'screen_added', `Page "${added[0]}" added`);
       }
-      withSite(site, () => insertSiteVersion(p, createScreen(p, title, String(req.body.note ?? '').slice(0, 1000)), fileName, site, site.entry));
-      logEvent(p, req.user.name, 'screen_added', `Page "${title}" added`);
       return res.json({
         ...projectBundle(q.project.get(p.id), { forClient: false }),
         upload_warning: uploadWarning(fileName, site),
-        upload_note: lateAdditionNote(p, [title]),
+        upload_note: [note, added.length ? lateAdditionNote(p, added) : undefined].filter(Boolean).join(' ') || undefined,
       });
     }
 

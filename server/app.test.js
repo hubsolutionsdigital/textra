@@ -487,3 +487,52 @@ test('agency can delete several pages, or all of them, in one go', async () => {
   page = await fetch(`${base}/sites/${home.current_version.site_token}/index.html`);
   assert.equal(page.status, 404, 'files removed once no page uses them');
 });
+
+test('dropping the revised zip on the pages list updates the existing pages for the next round', async () => {
+  const { zipSync, strToU8 } = await import('fflate');
+  await api('POST', '/api/auth/register', { email: 'redrop@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Trinax', notify_emails: 'pm@studio.test' });
+  const { id: projectId, share_token: shareToken } = r.data.project;
+  const nav = '<a href="play.html">Play</a><a href="about.html">About</a>';
+  const site = (label, extra = {}) =>
+    zipSync({
+      'TRINAX GO - Website/index.html': strToU8(`<html><body>${nav}home ${label}</body></html>`),
+      'TRINAX GO - Website/play.html': strToU8(`<html><body>${nav}play ${label}</body></html>`),
+      'TRINAX GO - Website/about.html': strToU8(`<html><body>${nav}about ${label}</body></html>`),
+      ...extra,
+    });
+  const drop = async (zip, name) => {
+    const fd = new FormData();
+    fd.append('title', 'TRINAX GO - Website');
+    fd.append('file', new Blob([zip], { type: 'application/zip' }), name);
+    return api('POST', `/api/projects/${projectId}/screens`, fd);
+  };
+  r = await drop(site('v1'), 'TRINAX GO - Website.zip');
+  assert.equal(r.data.screens.length, 3);
+  const ids = r.data.screens.map((s) => s.id);
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'Jane' }, { agency: false });
+  await api('POST', `/api/share/${shareToken}/comments`, { author_name: 'Jane', screen_id: ids[0], kind: 'love', x: 0.5, y: 0.5 }, { agency: false });
+  for (const id of ids) await api('POST', `/api/share/${shareToken}/screens/${id}/reviewed`, { author_name: 'Jane' }, { agency: false });
+  await api('POST', `/api/share/${shareToken}/submit`, { author_name: 'Jane' }, { agency: false });
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'next_round' });
+  assert.equal(r.data.project.current_round, 2);
+
+  r = await drop(site('v2', { 'TRINAX GO - Website/contact.html': strToU8('<html>contact</html>') }), 'TRINAX GO - Website.zip');
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.deepEqual(r.data.screens.map((s) => s.title), ['Home', 'Play', 'About', 'Contact'], 'no duplicates');
+  assert.deepEqual(r.data.screens.slice(0, 3).map((s) => s.id), ids, 'same pages, so round 1 comments stay with them');
+  assert.deepEqual(r.data.screens.map((s) => s.current_version.round), [2, 2, 2, 2]);
+  assert.deepEqual(r.data.screens.map((s) => s.versions.length), [2, 2, 2, 1]);
+  assert.match(r.data.upload_note, /New round 2 version from .*: updated Home, Play, About; added new page Contact/);
+  assert.equal(r.data.comments.length, 1);
+  const page = await fetch(`${base}/sites/${r.data.screens[1].current_version.site_token}/play.html`);
+  assert.match(await page.text(), /play v2/);
+
+  // a single page dropped on its own also updates the matching page
+  const fd = new FormData();
+  fd.append('title', 'About');
+  fd.append('file', new Blob([`<html><body>${nav}about v3</body></html>`], { type: 'text/html' }), 'about.html');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  assert.equal(r.data.screens.length, 4);
+  assert.equal(r.data.screens[2].versions.length, 3);
+});

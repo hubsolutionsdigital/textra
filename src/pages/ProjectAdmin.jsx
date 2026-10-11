@@ -454,6 +454,13 @@ function PagesTab({ project, screens, comments, mutate }) {
           <span className="muted small">
             One file per page: a <strong>PDF</strong>, an <strong>.html</strong> file, or a <strong>.zip</strong> of an
             HTML prototype (with its CSS, JS, images and fonts, for animations and scroll effects). Rename pages after.
+            {screens.length > 0 && (
+              <>
+                <br />
+                Revised designs can go here too: pages with the same file name (e.g. <code>about.html</code>) get a new
+                version instead of a duplicate page.
+              </>
+            )}
           </span>
         </label>
       )}
