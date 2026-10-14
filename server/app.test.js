@@ -584,3 +584,43 @@ test('feedback exports as one Word document or printable page, page by page', as
   res = await fetch(`${base}/api/projects/${projectId}/export?format=html`);
   assert.equal(res.status, 401, 'agency sign-in needed');
 });
+
+test('exports say where each comment is: section and element, worked out for older comments too', async () => {
+  await api('POST', '/api/auth/register', { email: 'where@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Where', notify_emails: 'pm@studio.test' });
+  const { id: projectId, share_token: shareToken } = r.data.project;
+  const html = `<html><body><div id="app">
+    <header><nav><a href="/">Logo</a></nav></header>
+    <main>
+      <section class="hero"><h1>Play. Win. Repeat.</h1><img src="hero.png" alt="Kids playing"></section>
+      <section id="our-games"><h2>Our games</h2><p>Pick one</p><button><span>Play now</span></button></section>
+    </main>
+    <footer><p>© Trinax</p></footer>
+  </div><script>1</script></body></html>`;
+  const fd = new FormData();
+  fd.append('title', 'Home');
+  fd.append('file', new Blob([html], { type: 'text/html' }), 'index.html');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  const screenId = r.data.screens[0].id;
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'Jane' }, { agency: false });
+  const comment = (body, anchor) =>
+    api('POST', `/api/share/${shareToken}/comments`, { author_name: 'Jane', screen_id: screenId, kind: 'change', body, x: 0.5, y: 0.5, device: 'desktop', anchor: JSON.stringify(anchor) }, { agency: false });
+  // left before the helper recorded locations: only the element selector is known
+  await comment('Bigger button', { page: 'index.html', selector: '#app > main:nth-of-type(1) > section:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)', fx: 0.5, fy: 0.5, px: 700, py: 1830, vw: 1440 });
+  await comment('Different photo', { page: 'index.html', selector: '#app > main:nth-of-type(1) > section:nth-of-type(1) > img:nth-of-type(1)', fx: 0.5, fy: 0.5, px: 700, py: 400, vw: 1440 });
+  // recorded by the helper on click
+  r = await comment('Footer text', { page: 'index.html', selector: 'footer', fx: 0.5, fy: 0.5, px: 700, py: 3000, vw: 1440, where: { section: 0, sections: 2, sectionName: 'Footer', element: 'the text “© Trinax”' } });
+  const [c1, c2, c3] = r.data.comments;
+  assert.equal(c1.location, undefined, 'clients do not get the team-only location');
+
+  r = await api('GET', `/api/projects/${projectId}`);
+  assert.deepEqual(r.data.comments.map((c) => c.location), [
+    'Section 2 of 2 “Our games” → the “Play now” button · about 1,850px from the top',
+    'Section 1 of 2 “Play. Win. Repeat.” → the image “Kids playing” · about 400px from the top',
+    'Footer → the text “© Trinax” · about 3,000px from the top',
+  ]);
+  assert.ok(c2 && c3);
+
+  const res = await fetch(`${base}/api/projects/${projectId}/export?format=html`, { headers: { cookie } });
+  assert.match(await res.text(), /Where:<\/strong> Section 2 of 2 “Our games” → the “Play now” button/);
+});

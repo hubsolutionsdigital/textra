@@ -2100,3 +2100,11 @@ label {
   gap: 6px;
   flex-wrap: wrap;
 }
+.comment-where {
+  font-size: 0.8rem;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-radius: 6px;
+  padding: 3px 8px;
+  margin: 4px 0 2px;
+}

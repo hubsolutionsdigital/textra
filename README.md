@@ -24,7 +24,11 @@ approval and a "development has started" hand-off.
 - See feedback live, mark comments **Done** or **Discussed**, and reply. Replies show to the client in the next round.
 - **Export feedback** from the Feedback tab as one document, page by page (Page 1: Home, Page 2: …): a **Word**
   file (.docx) or a print-ready page you can **Save as PDF**. Comments are numbered like their pins and include the
-  type, status, who/when, screen size, the client's screenshots and your replies. The export follows the round
+  type, status, who/when, screen size, the client's screenshots and your replies, plus **where** each comment is, in
+  words: e.g. "Section 3 of 7 “Our games” → the “Play now” button · about 1,850px from the top" (HTML), or
+  "PDF page 2, top left" (PDF). Sections are counted inside `<main>`; header, footer and overlays are named. The
+  same 📍 line shows on comment cards in the dashboard. Comments left before this existed are located from the
+  uploaded HTML. The export follows the round
   picker (one round or all) and the "Only open" filter. The team link in emails has the same buttons.
 - When the client submits a round, upload updated PDFs, then click **Open round N+1**. After the last round, upload the finals and click **Send final for approval**.
 - Add the live-site URL once it's up, and the client sees a **View your live site** button.

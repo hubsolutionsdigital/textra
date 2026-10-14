@@ -14,11 +14,15 @@ import {
   ZOHO_REGIONS,
 } from './mailer.js';
 import { parseEmails, roundSubmittedEmail } from './emails.js';
-import { collectFeedback, exportFileName, toDocx, toHtml } from './export.js';
+import { collectFeedback, exportFileName, locator, toDocx, toHtml } from './export.js';
 import { isHtmlName, isZipName, linkToEarlierSite, serveSiteFile, storeSite } from './sites.js';
 import { fileURLToPath } from 'node:url';
 
-const FRAME_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public', 'frame.js');
+const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
+const DESCRIBE_SOURCE = fs.readFileSync(path.join(PUBLIC_DIR, 'describe.js'), 'utf8');
+/** The helper injected into prototypes, with the shared location describer inlined. */
+const frameScript = () =>
+  fs.readFileSync(path.join(PUBLIC_DIR, 'frame.js'), 'utf8').replace('/* @include describe.js */', () => DESCRIBE_SOURCE);
 const DEVICES = ['desktop', 'laptop', 'tablet', 'mobile'];
 
 /** Removes a stored upload: a single file, or a whole folder for HTML sites. */
@@ -92,7 +96,16 @@ function parseAnchor(raw) {
     px: num(a.px, 1e6),
     py: num(a.py, 1e7),
     vw: num(a.vw, 1e4) || 1440,
+    where: cleanWhere(a.where),
   };
+}
+
+/** The location text the helper works out on click (see public/describe.js). */
+function cleanWhere(w) {
+  if (!w || typeof w !== 'object') return undefined;
+  const str = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+  const int = (v) => Math.min(999, Math.max(0, Math.round(Number(v) || 0)));
+  return { section: int(w.section), sections: int(w.sections), sectionName: str(w.sectionName, 80), element: str(w.element, 120) };
 }
 
 export function createApp(db, { mailer = createMailer() } = {}) {
@@ -149,9 +162,15 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       const own = versions.filter((v) => v.screen_id === s.id);
       return { ...s, versions: own, current_version: own.at(-1) ?? null };
     });
+    // The team also gets each comment's location in words ("Section 3 of 9 → the “Play now” button").
+    const locate = !forClient && locator();
+    const versionById = new Map(versions.map((v) => [v.id, v]));
     const comments = q.comments.all(project.id).map((c) => ({
       ...c,
       attachments: attachments.filter((a) => a.comment_id === c.id).map((a) => a.id),
+      ...(locate && {
+        location: locate(c, versionById.get(c.version_id) ?? screens.find((s) => s.id === c.screen_id)?.current_version),
+      }),
     }));
     const out = {
       project: publicProject(project, { forClient }),
@@ -1118,7 +1137,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   // model as the share link. Pages are sandboxed by serveSiteFile.
   app.get('/__portal/frame.js', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
-    res.type('text/javascript').sendFile(FRAME_SCRIPT);
+    res.type('text/javascript').send(frameScript());
   });
 
   app.get(['/sites/:siteToken', '/sites/:siteToken/*rest'], (req, res) => {

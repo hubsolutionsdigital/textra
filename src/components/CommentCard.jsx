@@ -41,6 +41,11 @@ export default function CommentCard({
         {comment.device && <span className="round-chip">{deviceLabel(comment.device)}</span>}
         <span className="round-chip">R{comment.round}</span>
       </div>
+      {mode === 'agency' && comment.location && (
+        <div className="comment-where" title="Where on the design">
+          📍 {comment.location}
+        </div>
+      )}
       {hiddenHere && <div className="hidden-note">Not visible at this screen size. Click to jump to it.</div>}
       {comment.body && <p className="comment-body">{comment.body}</p>}
       {comment.attachments.length > 0 && (

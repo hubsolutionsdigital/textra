@@ -153,6 +153,24 @@
 
   // ---------- element anchors ----------
 
+  /* @include describe.js */
+
+  function isShown(e) {
+    var cs = getComputedStyle(e);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    var r = e.getBoundingClientRect();
+    return r.width > 0 || r.height > 0;
+  }
+
+  function where(target, x, y) {
+    try {
+      var under = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [];
+      return describeTarget(target, isShown, under);
+    } catch (err) {
+      return null;
+    }
+  }
+
   function esc(id) {
     return window.CSS && CSS.escape ? CSS.escape(id) : id.replace(/[^\w-]/g, '\\$&');
   }
@@ -315,6 +333,7 @@
         px: e.clientX + window.scrollX,
         py: e.clientY + window.scrollY,
         vw: window.innerWidth,
+        where: where(target, e.clientX, e.clientY),
       },
     });
   }

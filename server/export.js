@@ -13,6 +13,16 @@ import {
   TextRun,
   WidthType,
 } from 'docx';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseHTML } from 'linkedom';
+import { UPLOAD_DIR } from './db.js';
+
+/** The same describer the in-page helper uses when a comment is left (see public/describe.js). */
+const describeTarget = new Function(
+  `${fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'public', 'describe.js'), 'utf8')}\nreturn describeTarget;`,
+)();
 
 const KINDS = {
   love: { emoji: '❤️', label: 'Love it' },
@@ -35,7 +45,9 @@ export function collectFeedback(db, project, { round = 'all', onlyOpen = false }
   const attachments = db
     .prepare('SELECT a.* FROM attachments a JOIN comments c ON c.id = a.comment_id WHERE c.project_id = ? ORDER BY a.id')
     .all(project.id);
-  const latest = db.prepare('SELECT kind FROM versions WHERE screen_id = ? ORDER BY id DESC LIMIT 1');
+  const latest = db.prepare('SELECT * FROM versions WHERE screen_id = ? ORDER BY id DESC LIMIT 1');
+  const versionById = db.prepare('SELECT * FROM versions WHERE id = ?');
+  const locate = locator();
 
   const numbers = new Map();
   const counters = new Map();
@@ -58,6 +70,7 @@ export function collectFeedback(db, project, { round = 'all', onlyOpen = false }
       .map((c) => ({
         ...c,
         number: numbers.get(c.id),
+        location: locate(c, (c.version_id && versionById.get(c.version_id)) || latest.get(s.id)),
         attachments: attachments.filter((a) => a.comment_id === c.id),
       })),
   }));
@@ -88,20 +101,101 @@ export const exportFileName = (data, ext) =>
 const dateText = (iso) =>
   new Date(`${iso.replace(' ', 'T')}Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
-/** "Desktop view · PDF page 2" etc.: where on the page the comment was left. */
-const whereText = (page, c) => {
-  const parts = [];
-  if (c.device) parts.push(`${DEVICES[c.device] ?? c.device} view`);
-  if (page.kind === 'pdf' && c.pdf_page > 1) parts.push(`PDF page ${c.pdf_page}`);
-  let path;
+/** "Mobile view": the screen size the client was looking at. */
+const whereText = (page, c) => (c.device ? `${DEVICES[c.device] ?? c.device} view` : '');
+
+const parseJson = (raw) => {
   try {
-    path = c.anchor && JSON.parse(c.anchor).page;
+    return raw ? JSON.parse(raw) : null;
   } catch {
-    path = null;
+    return null;
   }
-  if (path) parts.push(path.replace(/^\/+/, ''));
-  return parts.join(' · ');
 };
+
+/** "top left", "middle", "bottom right" for a 0–1 position. */
+const region = (x, y) => {
+  const v = y < 0.34 ? 'top' : y > 0.66 ? 'bottom' : 'middle';
+  const h = x < 0.34 ? 'left' : x > 0.66 ? 'right' : '';
+  return v === 'middle' && !h ? 'middle' : `${v}${h ? ` ${h}` : ''}`;
+};
+
+const SPECIAL_SECTIONS = /^(Header|Footer|Navigation)/;
+
+/** Turns a describeTarget() result into "Section 3 of 9 “Our games” → the “Play now” button". */
+const describeWhere = (w) => {
+  if (!w) return '';
+  const parts = [];
+  if (w.section) parts.push(`Section ${w.section} of ${w.sections}${w.sectionName ? ` “${w.sectionName}”` : ''}`);
+  else if (SPECIAL_SECTIONS.test(w.sectionName)) parts.push(w.sectionName);
+  else if (w.sectionName) parts.push(`“${w.sectionName}” (overlay, outside the page sections)`);
+  if (w.element) parts.push(w.element);
+  return parts.join(' → ');
+};
+
+/**
+ * Where on the design a comment points, in words. HTML comments use the description recorded when
+ * the comment was left; older ones are worked out from the uploaded page and the saved element.
+ */
+export function locator() {
+  const docs = new Map();
+  const loadDoc = (file) => {
+    if (!docs.has(file)) {
+      let doc = null;
+      try {
+        doc = parseHTML(fs.readFileSync(file, 'utf8')).document;
+      } catch {
+        doc = null;
+      }
+      docs.set(file, doc);
+    }
+    return docs.get(file);
+  };
+  const pageFile = (version, page) => {
+    let rel = String(page || '').replace(/^\/+/, '');
+    try {
+      rel = decodeURIComponent(rel);
+    } catch {
+      /* keep as is */
+    }
+    if (!rel) rel = version.entry || 'index.html';
+    else if (rel.endsWith('/')) rel += 'index.html';
+    for (const dir of [version.stored_name, version.asset_base].filter(Boolean)) {
+      const root = path.join(UPLOAD_DIR, dir);
+      const file = path.resolve(root, rel);
+      if (file.startsWith(root + path.sep) && fs.existsSync(file)) return file;
+    }
+    return null;
+  };
+
+  return (c, version) => {
+    if (!version || version.kind !== 'html') {
+      const pdfPage = c.pdf_page > 1 ? `PDF page ${c.pdf_page}, ` : '';
+      return `${pdfPage}${region(c.x, c.y)} of the page (${Math.round(c.x * 100)}% across, ${Math.round(c.y * 100)}% down)`;
+    }
+    const a = parseJson(c.anchor) || {};
+    let w = a.where;
+    if (!w && a.selector) {
+      const file = pageFile(version, a.page);
+      const doc = file && loadDoc(file);
+      let el = null;
+      try {
+        el = doc && doc.querySelector(a.selector);
+      } catch {
+        el = null;
+      }
+      try {
+        if (el) w = describeTarget(el);
+      } catch {
+        w = null;
+      }
+    }
+    const parts = [describeWhere(w)];
+    const page = String(a.page || '').replace(/^\/+/, '');
+    if (page && page !== version.entry) parts.push(`on ${page}`);
+    if (a.py > 0) parts.push(`about ${(Math.round(a.py / 50) * 50).toLocaleString('en-GB')}px from the top`);
+    return parts.filter(Boolean).join(' · ') || `${region(c.x, c.y)} of the screen`;
+  };
+}
 
 const summaryText = ({ totals }) =>
   `${totals.comments} comment${totals.comments === 1 ? '' : 's'}: ${totals.changes} change request${totals.changes === 1 ? '' : 's'}, ` +
@@ -190,6 +284,10 @@ export async function toDocx(data, readAttachment) {
             }),
           ],
         }),
+        new Paragraph({
+          spacing: { before: 60, after: 60 },
+          children: [new TextRun({ text: '📍 Where: ', bold: true, color: NAVY }), new TextRun({ text: c.location, bold: true })],
+        }),
       ];
       for (const line of (c.body || '').split('\n')) if (c.body) cell.push(new Paragraph({ children: [new TextRun(line)] }));
       for (const a of c.attachments) {
@@ -264,6 +362,7 @@ export function toHtml(data, readAttachment) {
           return `${roundHead}<div class="c ${POSITIVE.includes(c.kind) ? 'pos' : ''}">
   <div class="top"><strong>#${c.number} ${kind.emoji} ${esc(kind.label)}</strong>${POSITIVE.includes(c.kind) ? '' : `<span class="st st-${esc(c.status)}">${esc(STATUS[c.status] ?? c.status)}</span>`}</div>
   <div class="meta">${esc([c.author_name, dateText(c.created_at), whereText(page, c)].filter(Boolean).join(' · '))}</div>
+  <div class="where">📍 <strong>Where:</strong> ${esc(c.location)}</div>
   ${c.body ? `<p>${esc(c.body).replace(/\n/g, '<br>')}</p>` : ''}${shots ? `<div class="shots">${shots}</div>` : ''}
   ${c.agency_reply ? `<div class="reply"><strong>Team reply:</strong> ${esc(c.agency_reply)}</div>` : ''}
 </div>`;
@@ -282,7 +381,8 @@ export function toHtml(data, readAttachment) {
   .sub,.meta,.none{color:#667085} .meta{font-size:12px;margin-bottom:6px}
   .summary{background:#f2f4f7;border-radius:8px;padding:10px 14px;margin:12px 0 0}
   .c{border:1px solid #d0d5dd;border-radius:8px;padding:10px 14px;margin:0 0 10px;break-inside:avoid}
-  .c.pos{background:#f0f9f4} .c p{margin:4px 0}
+  .c.pos{background:#f0f9f4}
+  .where{font-size:13px;background:#f5f8fc;border-radius:6px;padding:4px 8px;margin:2px 0 6px;color:#1b3a6b} .c p{margin:4px 0}
   .top{display:flex;justify-content:space-between;gap:12px}
   .st{font-size:12px;font-weight:600;border-radius:99px;padding:1px 8px;background:#fef0c7;color:#b54708;white-space:nowrap}
   .st-done,.st-wontfix{background:#d1fadf;color:#027a48}
