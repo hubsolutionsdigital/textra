@@ -24,5 +24,8 @@ export function fileUrls({ projectId, token, teamToken }) {
   return {
     version: (id) => `${base}/versions/${id}/file`,
     attachment: (id) => `${base}/attachments/${id}`,
+    // Agency/team only: all feedback as one document, page by page.
+    feedbackExport: ({ format, round, onlyOpen }) =>
+      `${base}/export?format=${format}&round=${round}${onlyOpen ? '&open=1' : ''}`,
   };
 }

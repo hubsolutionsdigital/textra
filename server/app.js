@@ -14,6 +14,7 @@ import {
   ZOHO_REGIONS,
 } from './mailer.js';
 import { parseEmails, roundSubmittedEmail } from './emails.js';
+import { collectFeedback, exportFileName, toDocx, toHtml } from './export.js';
 import { isHtmlName, isZipName, linkToEarlierSite, serveSiteFile, storeSite } from './sites.js';
 import { fileURLToPath } from 'node:url';
 
@@ -764,6 +765,36 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     const a = q.attachment.get(Number(req.params.attachmentId), p.id) ?? fail(404, 'File not found');
     sendStored(res, a.stored_name, a.mime);
   });
+
+  // ---------- feedback export ----------
+
+  /** One document with every comment, page by page: ?format=docx|html&round=all|N&open=1 */
+  const sendExport = async (req, res, p) => {
+    const round = req.query.round && req.query.round !== 'all' ? Number(req.query.round) || fail(400, 'Unknown round') : 'all';
+    const data = collectFeedback(db, p, { round, onlyOpen: req.query.open === '1' });
+    data.project = { ...p, agency_name: db.prepare('SELECT name FROM users WHERE id = ?').get(p.owner_id)?.name ?? '' };
+    const read = (a) => {
+      try {
+        return fs.readFileSync(path.join(UPLOAD_DIR, a.stored_name));
+      } catch {
+        return null;
+      }
+    };
+    const disposition = (kind, name) =>
+      `${kind}; filename="${name.replace(/[^\x20-\x7e]|"/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (req.query.format === 'html') {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Content-Disposition', disposition('inline', exportFileName(data, 'html')));
+      return res.send(toHtml(data, read));
+    }
+    const buf = await toDocx(data, read);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', disposition('attachment', exportFileName(data, 'docx')));
+    res.send(buf);
+  };
+  app.get('/api/projects/:projectId/export', requireUser, (req, res) => sendExport(req, res, ownedProject(req)));
+  app.get('/api/team/:teamToken/export', (req, res) => sendExport(req, res, teamProject(req)));
 
   // ---------- files ----------
 

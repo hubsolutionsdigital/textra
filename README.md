@@ -22,6 +22,10 @@ approval and a "development has started" hand-off.
   (a summary, then typing DELETE), because the pages' comments are deleted too. The client link stays the same.
 - Copy the client link. The same link works for every round.
 - See feedback live, mark comments **Done** or **Discussed**, and reply. Replies show to the client in the next round.
+- **Export feedback** from the Feedback tab as one document, page by page (Page 1: Home, Page 2: …): a **Word**
+  file (.docx) or a print-ready page you can **Save as PDF**. Comments are numbered like their pins and include the
+  type, status, who/when, screen size, the client's screenshots and your replies. The export follows the round
+  picker (one round or all) and the "Only open" filter. The team link in emails has the same buttons.
 - When the client submits a round, upload updated PDFs, then click **Open round N+1**. After the last round, upload the finals and click **Send final for approval**.
 - Add the live-site URL once it's up, and the client sees a **View your live site** button.
 - The activity log records every step (who joined, submissions, uploads, approvals).

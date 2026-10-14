@@ -2093,3 +2093,10 @@ label {
   background: var(--question-soft);
   border-color: #cfddf7;
 }
+
+.export-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}

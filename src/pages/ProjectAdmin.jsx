@@ -765,6 +765,23 @@ export function FeedbackTab({ project, screens, comments, urls, mutate, screenHr
           <input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} />
           <span>Only open</span>
         </label>
+        <div className="grow" />
+        {comments.length > 0 && (
+          <div className="export-buttons">
+            <span className="muted small">Export {round === 'all' ? 'all rounds' : `round ${round}`}:</span>
+            <a className="btn btn-sm" href={urls.feedbackExport({ format: 'docx', round, onlyOpen })} download>
+              ⬇ Word
+            </a>
+            <a
+              className="btn btn-sm"
+              href={urls.feedbackExport({ format: 'html', round, onlyOpen })}
+              target="_blank"
+              rel="noreferrer"
+            >
+              🖨 PDF / print
+            </a>
+          </div>
+        )}
       </div>
       {shown.length === 0 && <div className="empty-note">No feedback here yet.</div>}
       {screens.map((s) => {

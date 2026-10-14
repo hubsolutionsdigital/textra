@@ -536,3 +536,51 @@ test('dropping the revised zip on the pages list updates the existing pages for 
   assert.equal(r.data.screens.length, 4);
   assert.equal(r.data.screens[2].versions.length, 3);
 });
+
+test('feedback exports as one Word document or printable page, page by page', async () => {
+  const { unzipSync, strFromU8 } = await import('fflate');
+  await api('POST', '/api/auth/register', { email: 'export@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Trinax', client_name: 'Acme', notify_emails: 'pm@studio.test' });
+  const { id: projectId, share_token: shareToken, team_token: teamToken } = r.data.project;
+  for (const title of ['Home', 'Play', 'About']) {
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('file', pdfBlob(), `${title}.pdf`);
+    r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  }
+  const [home, , about] = r.data.screens;
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'Jane' }, { agency: false });
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAYAAAC56t6BAAAAEklEQVR4nGP4z8DwnwEJMJAmAADKBQL+zG2qVQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const fd = new FormData();
+  for (const [k, v] of Object.entries({ author_name: 'Jane', screen_id: about.id, kind: 'change', body: 'Swap the <hero> photo', x: 0.5, y: 0.5 })) fd.append(k, String(v));
+  fd.append('images', new Blob([png], { type: 'image/png' }), 'shot.png');
+  await api('POST', `/api/share/${shareToken}/comments`, fd, { agency: false });
+  await api('POST', `/api/share/${shareToken}/comments`, { author_name: 'Jane', screen_id: home.id, kind: 'love', body: 'Great colours', x: 0.1, y: 0.1 }, { agency: false });
+
+  let res = await fetch(`${base}/api/projects/${projectId}/export?format=docx&round=1`, { headers: { cookie } });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-disposition'), /attachment; filename="Trinax round 1 feedback\.docx"/);
+  const files = unzipSync(new Uint8Array(await res.arrayBuffer()));
+  const xml = strFromU8(files['word/document.xml']);
+  const text = xml.replace(/<[^>]+>/g, '');
+  assert.ok(text.indexOf('Page 1: Home') < text.indexOf('Page 2: Play'));
+  assert.ok(text.indexOf('Page 2: Play') < text.indexOf('No feedback on this page.'));
+  assert.ok(text.indexOf('Great colours') < text.indexOf('Page 3: About'), 'comments sit under their page');
+  assert.ok(text.indexOf('Page 3: About') < text.indexOf('Swap the &lt;hero&gt; photo'));
+  assert.ok(Object.keys(files).some((f) => f.startsWith('word/media/')), 'screenshot embedded');
+
+  res = await fetch(`${base}/api/team/${teamToken}/export?format=html&round=all`);
+  const html = await res.text();
+  assert.equal(res.status, 200);
+  assert.match(html, /Page 3: About[\s\S]*Swap the &lt;hero&gt; photo[\s\S]*data:image\/png;base64,/);
+  assert.match(html, /2 comments: 1 change request, 0 questions, 1 positive/);
+
+  res = await fetch(`${base}/api/projects/${projectId}/export?format=html&open=1`, { headers: { cookie } });
+  const open = await res.text();
+  assert.doesNotMatch(open, /Great colours/, 'only open change requests and questions');
+  res = await fetch(`${base}/api/projects/${projectId}/export?format=html`);
+  assert.equal(res.status, 401, 'agency sign-in needed');
+});
