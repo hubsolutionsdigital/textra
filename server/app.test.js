@@ -624,3 +624,51 @@ test('exports say where each comment is: section and element, worked out for old
   const res = await fetch(`${base}/api/projects/${projectId}/export?format=html`, { headers: { cookie } });
   assert.match(await res.text(), /Where:<\/strong> Section 2 of 2 “Our games” → the “Play now” button/);
 });
+
+test('agency can close a round the client never submitted, or set the round by hand', async () => {
+  await api('POST', '/api/auth/register', { email: 'rounds@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Rounds', notify_emails: 'pm@studio.test' });
+  const { id: projectId, share_token: shareToken } = r.data.project;
+  const upload = async (screenId) => {
+    const fd = new FormData();
+    fd.append('title', 'Home');
+    fd.append('file', pdfBlob(), 'home.pdf');
+    return api('POST', screenId ? `/api/projects/${projectId}/screens/${screenId}/versions` : `/api/projects/${projectId}/screens`, fd);
+  };
+  r = await upload();
+  const screenId = r.data.screens[0].id;
+  // round 1 submitted normally, round 2 opened
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'Jane' }, { agency: false });
+  await api('POST', `/api/share/${shareToken}/screens/${screenId}/reviewed`, { author_name: 'Jane' }, { agency: false });
+  await api('POST', `/api/share/${shareToken}/submit`, { author_name: 'Jane' }, { agency: false });
+  await upload(screenId);
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'next_round' });
+  assert.equal(r.data.project.current_round, 2);
+  await api('POST', `/api/share/${shareToken}/comments`, { author_name: 'Jane', screen_id: screenId, kind: 'change', body: 'Bigger logo', x: 0.1, y: 0.1 }, { agency: false });
+
+  // the client never presses Submit for round 2: the agency closes it for them
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'close_round' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.project.stage, 'revising');
+  assert.equal(r.data.project.current_round, 2);
+  assert.equal(r.data.comments.filter((c) => c.round === 2).length, 1, 'their comments are kept');
+  assert.match(r.data.events[0].message, /Round 2 closed by Studio on the client’s behalf/);
+  r = await api('POST', `/api/share/${shareToken}/comments`, { author_name: 'Jane', screen_id: screenId, kind: 'love', x: 0.1, y: 0.1 }, { agency: false });
+  assert.equal(r.status, 409, 'round is locked for the client');
+  r = await upload(screenId);
+  assert.equal(r.data.screens[0].current_version.round, 3, 'uploads now go to round 3');
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'next_round' });
+  assert.equal(r.data.project.current_round, 3);
+  assert.equal(r.data.project.stage, 'review');
+
+  // manual override, e.g. going back to round 2 with the client reviewing
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'set_round', round: 4, stage: 'review' });
+  assert.equal(r.status, 400);
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'set_round', round: 2, stage: 'review' });
+  assert.equal(r.data.project.current_round, 2);
+  assert.equal(r.data.project.stage, 'review');
+  assert.equal(r.data.screens[0].current_version.round, 2, 'the latest upload is shown as round 2');
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'set_round', round: 2, stage: 'revising' });
+  assert.equal(r.data.project.stage, 'revising');
+  assert.match(r.data.events[0].message, /Round set to 2 \(client submitted, team revising\)/);
+});

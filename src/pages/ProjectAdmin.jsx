@@ -214,6 +214,23 @@ function NextStep({ project, screens, comments, mutate }) {
                 ? ` We’ll email ${project.notify_emails} when they do.`
                 : ' Add notification emails in Settings to get an email when they do.'}
             </p>
+            {roundComments.length > 0 && (
+              <div className="row">
+                <button
+                  className="btn btn-ghost"
+                  onClick={() =>
+                    confirmAndAdvance(
+                      'close_round',
+                      `Close round ${r} for the client?\n\nUse this when they’ve finished giving feedback but haven’t pressed Submit. ` +
+                        `Their ${plural(roundComments.length, 'comment')} stay, the round locks for them, and you can upload ` +
+                        `${lastRound ? 'the final designs' : `round ${r + 1} versions`}.`,
+                    )
+                  }
+                >
+                  Client finished? Close round {r} →
+                </button>
+              </div>
+            )}
           </div>
         </div>
       );
@@ -869,64 +886,112 @@ function SettingsTab({ project, mutate }) {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   return (
-    <form
-      className="stack settings"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        await mutate('PATCH', '', form);
-        setSaved(true);
-        setTimeout(() => setSaved(false), 1500);
-      }}
-    >
-      <label>
-        Project name
-        <input value={form.name} onChange={set('name')} required />
-      </label>
-      <label>
-        Client / company name
-        <input value={form.client_name} onChange={set('client_name')} />
-      </label>
-      <label>
-        Revision rounds included
-        <input type="number" min={project.current_round} max={10} value={form.max_rounds} onChange={set('max_rounds')} />
-      </label>
-      <label>
-        Welcome message shown to the client
-        <textarea rows={3} value={form.welcome_message} onChange={set('welcome_message')} />
-      </label>
-      <label>
-        Notify these emails when the client submits a round
-        <input
-          value={form.notify_emails}
-          onChange={set('notify_emails')}
-          placeholder="pm@studio.com, designer@studio.com"
-          required
-        />
-        <span className="muted small">
-          Separate addresses with commas. Each email has a link where the team can mark comments done, with no
-          sign-in needed.
-        </span>
-      </label>
-      <TeamLink project={project} />
-      <label>
-        Live site URL <span className="muted">(shown to the client after approval)</span>
-        <input value={form.live_url} onChange={set('live_url')} placeholder="https://staging.client-site.com" />
-      </label>
+    <div className="stack">
+      <form
+        className="stack settings"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          await mutate('PATCH', '', form);
+          setSaved(true);
+          setTimeout(() => setSaved(false), 1500);
+        }}
+      >
+        <label>
+          Project name
+          <input value={form.name} onChange={set('name')} required />
+        </label>
+        <label>
+          Client / company name
+          <input value={form.client_name} onChange={set('client_name')} />
+        </label>
+        <label>
+          Revision rounds included
+          <input type="number" min={project.current_round} max={10} value={form.max_rounds} onChange={set('max_rounds')} />
+        </label>
+        <label>
+          Welcome message shown to the client
+          <textarea rows={3} value={form.welcome_message} onChange={set('welcome_message')} />
+        </label>
+        <label>
+          Notify these emails when the client submits a round
+          <input
+            value={form.notify_emails}
+            onChange={set('notify_emails')}
+            placeholder="pm@studio.com, designer@studio.com"
+            required
+          />
+          <span className="muted small">
+            Separate addresses with commas. Each email has a link where the team can mark comments done, with no
+            sign-in needed.
+          </span>
+        </label>
+        <TeamLink project={project} />
+        <label>
+          Live site URL <span className="muted">(shown to the client after approval)</span>
+          <input value={form.live_url} onChange={set('live_url')} placeholder="https://staging.client-site.com" />
+        </label>
+        <div className="row">
+          <button className="btn btn-primary">{saved ? 'Saved ✓' : 'Save settings'}</button>
+          <div className="grow" />
+          <button
+            type="button"
+            className="btn btn-ghost danger"
+            onClick={async () => {
+              if (!window.confirm('Delete this project, its files and all feedback? This cannot be undone.')) return;
+              await api('DELETE', `/api/projects/${project.id}`);
+              navigate('/projects');
+            }}
+          >
+            Delete project
+          </button>
+        </div>
+      </form>
+      {['review', 'revising'].includes(project.stage) && <RoundControl project={project} mutate={mutate} />}
+    </div>
+  );
+}
+
+/** Manual override for where the project is: any round, with the client reviewing or the team revising. */
+function RoundControl({ project, mutate }) {
+  const [round, setRound] = useState(project.current_round);
+  const [stage, setStage] = useState(project.stage);
+  const [error, setError] = useState('');
+  const unchanged = round === project.current_round && stage === project.stage;
+  const describe = (r, st) => (st === 'review' ? `client reviewing round ${r}` : `round ${r} submitted, team revising`);
+
+  return (
+    <div className="card stack-sm round-control">
+      <strong>Round</strong>
+      <span className="muted small">
+        Now: {describe(project.current_round, project.stage)}. Change it if the project is out of step, e.g. the client
+        sent feedback another way, or you’re already on the next round.
+      </span>
       <div className="row">
-        <button className="btn btn-primary">{saved ? 'Saved ✓' : 'Save settings'}</button>
-        <div className="grow" />
+        <select value={round} onChange={(e) => setRound(Number(e.target.value))} aria-label="Round">
+          {Array.from({ length: project.max_rounds }, (_, i) => i + 1).map((n) => (
+            <option key={n} value={n}>
+              Round {n}
+            </option>
+          ))}
+        </select>
+        <select value={stage} onChange={(e) => setStage(e.target.value)} aria-label="Status">
+          <option value="review">Client reviewing (uploads go to this round)</option>
+          <option value="revising">Client submitted, team revising (uploads go to the next round)</option>
+        </select>
         <button
           type="button"
-          className="btn btn-ghost danger"
+          className="btn"
+          disabled={unchanged}
           onClick={async () => {
-            if (!window.confirm('Delete this project, its files and all feedback? This cannot be undone.')) return;
-            await api('DELETE', `/api/projects/${project.id}`);
-            navigate('/projects');
+            if (!window.confirm(`Set the project to: ${describe(round, stage)}?\n\nComments and files are kept.`)) return;
+            setError('');
+            await mutate('POST', '/advance', { action: 'set_round', round, stage }).catch((e) => setError(e.message));
           }}
         >
-          Delete project
+          Apply
         </button>
       </div>
-    </form>
+      {error && <div className="form-error">{error}</div>}
+    </div>
   );
 }

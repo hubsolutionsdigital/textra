@@ -2108,3 +2108,17 @@ label {
   padding: 3px 8px;
   margin: 4px 0 2px;
 }
+.round-control {
+  max-width: 760px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+.round-control select {
+  width: auto;
+}
+.stack-sm > .share-row {
+  flex: none; /* its 380px basis is meant as a width in the share box, not a height here */
+}

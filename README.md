@@ -30,6 +30,9 @@ approval and a "development has started" hand-off.
   same 📍 line shows on comment cards in the dashboard. Comments left before this existed are located from the
   uploaded HTML. The export follows the round
   picker (one round or all) and the "Only open" filter. The team link in emails has the same buttons.
+- Client gave feedback but never pressed Submit? **Client finished? Close round N** (on the "Waiting for the client"
+  card) locks the round for them so you can upload the next round. **Settings → Round** sets the project to any
+  round, with the client reviewing or the team revising, if it ever gets out of step. Comments and files are kept.
 - When the client submits a round, upload updated PDFs, then click **Open round N+1**. After the last round, upload the finals and click **Send final for approval**.
 - Add the live-site URL once it's up, and the client sees a **View your live site** button.
 - The activity log records every step (who joined, submissions, uploads, approvals).

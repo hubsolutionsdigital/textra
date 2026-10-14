@@ -430,6 +430,31 @@ export function createApp(db, { mailer = createMailer() } = {}) {
         ).run(p.current_round, p.current_round + 1, p.id);
       });
       logEvent(p, req.user.name, 'round_reopened', `Round ${p.current_round} reopened for more feedback`);
+    } else if (action === 'close_round') {
+      // The client gave their feedback but never pressed Submit: lock the round for them.
+      if (p.stage !== 'review') fail(409, 'This round is not open for review');
+      db.prepare(`UPDATE projects SET stage = 'revising' WHERE id = ?`).run(p.id);
+      logEvent(p, req.user.name, 'round_closed', `Round ${p.current_round} closed by ${req.user.name} on the client’s behalf`);
+    } else if (action === 'set_round') {
+      // Manual override: put the project at any round, either with the client reviewing or with the team revising.
+      if (!['review', 'revising'].includes(p.stage)) fail(409, 'Rounds can only be changed before the final design is sent');
+      const round = Number(req.body.round);
+      if (!Number.isInteger(round) || round < 1 || round > p.max_rounds) fail(400, `Choose a round from 1 to ${p.max_rounds}`);
+      const stage = req.body.stage === 'revising' ? 'revising' : 'review';
+      const uploadsFor = stage === 'review' ? round : round + 1;
+      tx(db, () => {
+        db.prepare('UPDATE projects SET stage = ?, current_round = ? WHERE id = ?').run(stage, round, p.id);
+        // Going back: uploads labelled for a later round now belong to the round the client will see next.
+        db.prepare(
+          `UPDATE versions SET round = ? WHERE round > ? AND round <= ? AND screen_id IN (SELECT id FROM screens WHERE project_id = ?)`,
+        ).run(uploadsFor, uploadsFor, p.max_rounds, p.id);
+      });
+      logEvent(
+        p,
+        req.user.name,
+        'round_set',
+        `Round set to ${round} (${stage === 'review' ? 'client reviewing' : 'client submitted, team revising'}) by ${req.user.name}`,
+      );
     } else {
       fail(400, 'Unknown action');
     }
