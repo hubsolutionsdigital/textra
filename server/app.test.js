@@ -672,3 +672,24 @@ test('agency can close a round the client never submitted, or set the round by h
   assert.equal(r.data.project.stage, 'revising');
   assert.match(r.data.events[0].message, /Round set to 2 \(client submitted, team revising\)/);
 });
+
+test('script that builds image tags is not reported as missing files', async () => {
+  const { zipSync, strToU8 } = await import('fflate');
+  await api('POST', '/api/auth/register', { email: 'script@studio.test', name: 'Studio', password: 'password1' });
+  const r0 = await api('POST', '/api/projects', { name: 'Bareness', notify_emails: 'pm@studio.test' });
+  const projectId = r0.data.project.id;
+  const page = (extra = '') => `<html><body><a href="faq.html">FAQ</a><img src="img/a.jpg">${extra}<script>
+    cards.forEach(function (c, i) { el.innerHTML += '<img src='+c.dataset.i+' data-src="'+i+'">'; });
+    thumb.src = "img/"+name+".jpg"; link.href='#'+i;
+  </script></body></html>`;
+  const zip = zipSync({
+    'Bareness UI/index.html': strToU8(page('<img src="img/missing.png">')),
+    'Bareness UI/faq.html': strToU8(page()),
+    'Bareness UI/img/a.jpg': new Uint8Array([255, 216, 255]),
+  });
+  const fd = new FormData();
+  fd.append('file', new Blob([zip], { type: 'application/zip' }), 'Bareness UI.zip');
+  const r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.deepEqual(r.data.upload_warning?.files, ['img/missing.png'], 'only the real missing image');
+});

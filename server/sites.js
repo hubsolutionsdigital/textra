@@ -153,6 +153,9 @@ export function findMissingFiles(dir, { baseDir = null, limit = 30 } = {}) {
         if (!ref || /^(?:[a-z][a-z0-9+.-]*:|\/\/|#|\{|\$)/i.test(ref) || ref.includes('${')) continue;
         ref = ref.split(/[?#]/)[0];
         if (!ref || ref.endsWith('/')) continue;
+        // Bits of script that only look like attributes, e.g. '<img src="'+c.dataset.i+'">' in a JS string:
+        // a real file reference has no operators or quotes, and its last segment has an extension.
+        if (/[+'"`;<>=,\s]/.test(ref) || !/\.[a-z0-9]+$/i.test(ref.split('/').pop())) continue;
         let decoded;
         try {
           decoded = decodeURIComponent(ref);
