@@ -693,3 +693,27 @@ test('script that builds image tags is not reported as missing files', async () 
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.deepEqual(r.data.upload_warning?.files, ['img/missing.png'], 'only the real missing image');
 });
+
+test('paths in a script in assets/js are checked from the page, not the script folder', async () => {
+  const { zipSync, strToU8 } = await import('fflate');
+  await api('POST', '/api/auth/register', { email: 'tily@studio.test', name: 'Studio', password: 'password1' });
+  const r0 = await api('POST', '/api/projects', { name: 'Tily', notify_emails: 'pm@studio.test' });
+  const projectId = r0.data.project.id;
+  const page = '<html><body><a href="shop.html">Shop</a><script src="assets/js/app.js"></script></body></html>';
+  const zip = zipSync({
+    'TILY TEA UI/index.html': strToU8(page),
+    'TILY TEA UI/shop.html': strToU8(page),
+    'TILY TEA UI/assets/js/app.js': strToU8(
+      `logo.src = "assets/img/logo.png"; const products = ["p-honey.webp", "p-gone.webp"];
+       img.src = "assets/img/" + products[0]; nav.innerHTML = '<a href="shop.html">Shop</a><a href="blog.html">Blog</a>';`,
+    ),
+    'TILY TEA UI/assets/img/logo.png': new Uint8Array([137, 80, 78, 71]),
+    'TILY TEA UI/assets/img/p-honey.webp': new Uint8Array([82, 73, 70, 70]),
+  });
+  const fd = new FormData();
+  fd.append('file', new Blob([zip], { type: 'application/zip' }), 'TILY TEA UI.zip');
+  const r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.deepEqual(r.data.upload_warning?.files, ['p-gone.webp'], 'only the image that really is not in the zip');
+  assert.deepEqual(r.data.upload_warning?.pages, ['blog.html'], 'menu link checked from the page folder');
+});

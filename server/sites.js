@@ -141,8 +141,14 @@ export function findMissingFiles(dir, { baseDir = null, limit = 30 } = {}) {
   const missing = new Set();
   const missingPages = new Set();
   const external = new Set();
-  for (const rel of listFiles(dir).filter((f) => SCANNED.test(f))) {
+  const allFiles = listFiles(dir);
+  const basenames = new Set(allFiles.map((f) => path.basename(f).toLowerCase()));
+  const pageDirs = [...new Set(allFiles.filter((f) => /\.html?$/i.test(f)).map((f) => path.dirname(f)))];
+  for (const rel of allFiles.filter((f) => SCANNED.test(f))) {
     const text = fs.readFileSync(path.join(dir, rel), 'utf8');
+    // Paths in CSS are relative to the stylesheet, but paths in scripts are relative to the page running
+    // them, and scripts often join folder and file name in code ('assets/img/' + 'p-honey.webp').
+    const isScript = /\.m?js$/i.test(rel);
     for (const pattern of REF_PATTERNS) {
       for (const match of text.matchAll(pattern)) {
         let ref = match[1].trim();
@@ -166,9 +172,14 @@ export function findMissingFiles(dir, { baseDir = null, limit = 30 } = {}) {
         if (decoded.startsWith('#')) continue;
         const target = decoded.startsWith('/')
           ? path.join(dir, decoded)
-          : path.resolve(dir, path.dirname(rel), decoded);
+          : path.resolve(dir, isScript && pageDirs.length ? pageDirs[0] : path.dirname(rel), decoded);
         if (!target.startsWith(dir + path.sep)) continue;
         if (fs.existsSync(target)) continue;
+        if (isScript) {
+          const bases = [...pageDirs, path.dirname(rel)];
+          if (bases.some((b) => fs.existsSync(path.resolve(dir, b, decoded)))) continue;
+          if (basenames.has(path.basename(decoded).toLowerCase())) continue;
+        }
         const name = path.relative(dir, target).split(path.sep).join('/');
         if (baseDir && fs.existsSync(path.join(baseDir, name))) continue; // provided by the earlier upload
         // Links to pages that aren't designed yet are normal in a prototype; report them separately.
