@@ -4,7 +4,7 @@ import multer from 'multer';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { UPLOAD_DIR, tx } from './db.js';
+import { DATA_DIR, UPLOAD_DIR, tx } from './db.js';
 import {
   createMailer,
   decryptSecret,
@@ -199,7 +199,15 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   // Health check for the hosting platform: confirms the app is up and the database answers.
   app.get('/api/health', (req, res) => {
     db.prepare('SELECT 1').get();
-    res.json({ ok: true });
+    let storage;
+    try {
+      const st = fs.statfsSync(DATA_DIR);
+      const gb = (n) => Math.round((n * st.bsize) / 1e8) / 10;
+      storage = { free_gb: gb(st.bavail), total_gb: gb(st.blocks) };
+    } catch {
+      storage = undefined;
+    }
+    res.json({ ok: true, storage });
   });
 
   // ---------- auth ----------
@@ -1186,9 +1194,27 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     if (err instanceof multer.MulterError) {
       return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'That file is too large' : err.message });
     }
+    // File-system problems while unpacking an upload: say what happened instead of a bare error.
+    const fsMessage = {
+      ENOSPC: 'The server’s storage is full, so the upload couldn’t be saved. Delete old projects, or give the Railway volume more space, then try again.',
+      EDQUOT: 'The server’s storage is full, so the upload couldn’t be saved. Delete old projects, or give the Railway volume more space, then try again.',
+      EISDIR: 'The zip has a file and a folder with the same name, so it couldn’t be unpacked. Rename one of them and zip it again.',
+      ENOTDIR: 'The zip has a file and a folder with the same name, so it couldn’t be unpacked. Rename one of them and zip it again.',
+      EEXIST: 'The zip has a file and a folder with the same name, so it couldn’t be unpacked. Rename one of them and zip it again.',
+      ENAMETOOLONG: 'A file or folder name in the zip is too long. Shorten it and zip it again.',
+    }[err.code];
+    if (fsMessage) {
+      console.error(`[${req.method} ${req.path}]`, err);
+      return res.status(err.code === 'ENOSPC' || err.code === 'EDQUOT' ? 507 : 400).json({ error: fsMessage });
+    }
     const status = err.status ?? 500;
-    if (status >= 500) console.error(err);
-    res.status(status).json({ error: status >= 500 ? 'Something went wrong' : err.message });
+    if (status >= 500) {
+      // A short reference shown to the user and logged with the details, to find it in the server logs.
+      const ref = crypto.randomBytes(3).toString('hex');
+      console.error(`[error ${ref}] ${req.method} ${req.path}`, err);
+      return res.status(status).json({ error: `Something went wrong (error ${ref}). Please try again; if it keeps happening, search the server logs for ${ref}.` });
+    }
+    res.status(status).json({ error: err.message });
   });
 
   return app;

@@ -717,3 +717,18 @@ test('paths in a script in assets/js are checked from the page, not the script f
   assert.deepEqual(r.data.upload_warning?.files, ['p-gone.webp'], 'only the image that really is not in the zip');
   assert.deepEqual(r.data.upload_warning?.pages, ['blog.html'], 'menu link checked from the page folder');
 });
+
+test('upload problems explain themselves instead of a bare "Something went wrong"', async () => {
+  const { zipSync, strToU8 } = await import('fflate');
+  await api('POST', '/api/auth/register', { email: 'clash@studio.test', name: 'Studio', password: 'password1' });
+  const r0 = await api('POST', '/api/projects', { name: 'Clash', notify_emails: 'pm@studio.test' });
+  // "images" is both a file and a folder
+  const zip = zipSync({ 'site/index.html': strToU8('<html></html>'), 'site/images': strToU8('x'), 'site/images/a.png': new Uint8Array([1]) });
+  const fd = new FormData();
+  fd.append('file', new Blob([zip], { type: 'application/zip' }), 'site.zip');
+  const r = await api('POST', `/api/projects/${r0.data.project.id}/screens`, fd);
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /a file and a folder with the same name/);
+  const health = await api('GET', '/api/health');
+  assert.ok(health.data.storage.free_gb >= 0, 'health reports free storage');
+});
