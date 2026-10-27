@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import PdfDocument from './PdfDocument.jsx';
+import { plural } from '../util.js';
 import HtmlStage, { DEVICES } from './HtmlStage.jsx';
 import Composer from './Composer.jsx';
 import CommentCard from './CommentCard.jsx';
@@ -38,6 +39,7 @@ export default function ReviewViewer({
   const [hoverId, setHoverId] = useState(null);
   const liveRound = ['final', 'approved'].includes(project.stage) ? null : project.current_round;
   const [tab, setTab] = useState(liveRound ? 'current' : 'past');
+  const [showAllPast, setShowAllPast] = useState(false);
 
   // HTML prototypes
   const isHtml = version?.kind === 'html';
@@ -93,6 +95,7 @@ export default function ReviewViewer({
 
   const focusComment = (c) => {
     setActiveId(c.id);
+    if (c.round !== liveRound && !c.agency_reply) setShowAllPast(true); // it's hidden by the "replied" filter
     if (c.round !== liveRound) setShowPast(true);
     if (isHtml) {
       setHtmlDraft(null);
@@ -213,7 +216,10 @@ export default function ReviewViewer({
     );
   };
 
-  const list = tab === 'current' ? live : past;
+  // Clients can pile up dozens of earlier comments; by default show only the ones the team answered.
+  const pastReplied = past.filter((c) => c.agency_reply);
+  const filterPast = mode === 'client' && !showAllPast && pastReplied.length > 0 && pastReplied.length < past.length;
+  const list = tab === 'current' ? live : filterPast ? pastReplied : past;
 
   const htmlPins = isHtml
     ? [...live, ...(showPast ? past : [])]
@@ -391,39 +397,67 @@ export default function ReviewViewer({
         </div>
 
         <aside className="viewer-sidebar">
-          {sidebarTop}
-          <div className="tabs" data-tour="comments">
-            <button className={tab === 'current' ? 'active' : ''} onClick={() => setTab('current')}>
-              {liveRound ? `Round ${liveRound}` : 'Latest'} <span className="count">{live.length}</span>
-            </button>
-            <button className={tab === 'past' ? 'active' : ''} onClick={() => setTab('past')}>
-              Earlier rounds <span className="count">{past.length}</span>
-            </button>
-          </div>
-          <div className="comment-list">
-            {list.length === 0 && (
-              <div className="empty-note">
-                {tab === 'current'
-                  ? canComment
-                    ? 'No comments yet. Click anywhere on the design to leave one.'
-                    : 'No comments in this round.'
-                  : 'Nothing from earlier rounds on this page.'}
-              </div>
-            )}
-            {list.map((c, i) => (
-              <div key={c.id}>
-                {tab === 'past' && (i === 0 || list[i - 1].round !== c.round) && (
-                  <div className="round-divider">Round {c.round}</div>
-                )}
-                <div
-                  id={`card-${c.id}`}
-                  className={`comment-list-item ${activeId === c.id ? 'active' : ''}`}
-                  onClick={() => focusComment(c)}
-                >
-                  <CommentCard {...cardProps(c)} compact={mode === 'client'} />
+          {/* One scroll area: the notes on top scroll away, the tabs stay pinned, the footer stays put. */}
+          <div className="sidebar-scroll">
+            {sidebarTop}
+            <div className="tabs" data-tour="comments">
+              <button className={tab === 'current' ? 'active' : ''} onClick={() => setTab('current')}>
+                {liveRound ? `Round ${liveRound}` : 'Latest'} <span className="count">{live.length}</span>
+              </button>
+              <button
+                className={tab === 'past' ? 'active' : ''}
+                onClick={(e) => {
+                  setTab('past');
+                  e.currentTarget.closest('.tabs')?.scrollIntoView({ block: 'nearest' });
+                }}
+              >
+                Earlier rounds <span className="count">{past.length}</span>
+              </button>
+            </div>
+            <div className="comment-list">
+              {tab === 'past' && mode === 'client' && pastReplied.length > 0 && pastReplied.length < past.length && (
+                <div className="past-filter">
+                  {filterPast ? (
+                    <>
+                      Showing the {plural(pastReplied.length, 'comment')} the team replied to.{' '}
+                      <button className="link-btn" onClick={() => setShowAllPast(true)}>
+                        Show all {past.length}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      Showing all {past.length} earlier comments.{' '}
+                      <button className="link-btn" onClick={() => setShowAllPast(false)}>
+                        Only replied ({pastReplied.length})
+                      </button>
+                    </>
+                  )}
                 </div>
-              </div>
-            ))}
+              )}
+              {list.length === 0 && (
+                <div className="empty-note">
+                  {tab === 'current'
+                    ? canComment
+                      ? 'No comments yet. Click anywhere on the design to leave one.'
+                      : 'No comments in this round.'
+                    : 'Nothing from earlier rounds on this page.'}
+                </div>
+              )}
+              {list.map((c, i) => (
+                <div key={c.id}>
+                  {tab === 'past' && (i === 0 || list[i - 1].round !== c.round) && (
+                    <div className="round-divider">Round {c.round}</div>
+                  )}
+                  <div
+                    id={`card-${c.id}`}
+                    className={`comment-list-item ${activeId === c.id ? 'active' : ''}`}
+                    onClick={() => focusComment(c)}
+                  >
+                    <CommentCard {...cardProps(c)} compact={mode === 'client'} />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
           {footer}
         </aside>
