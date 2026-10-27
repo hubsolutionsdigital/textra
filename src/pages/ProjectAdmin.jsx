@@ -13,6 +13,7 @@ export default function ProjectAdmin() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('pages');
+  const [feedbackFilter, setFeedbackFilter] = useState(null); // 'answers' to open Feedback on the client's answers
 
   const load = useCallback(
     () => api('GET', `/api/projects/${projectId}`).then(setData, (e) => setError(e.message)),
@@ -80,12 +81,19 @@ export default function ProjectAdmin() {
         <RoundStepper project={project} />
         <ShareBox project={project} />
         <NextStep project={project} screens={screens} comments={comments} mutate={mutate} />
+        <NewAnswersBanner
+          comments={comments}
+          onView={() => {
+            setFeedbackFilter('answers');
+            setTab('feedback');
+          }}
+        />
         {error && <div className="form-error">{error}</div>}
 
         <div className="tabs tabs-lg">
           {[
             ['pages', `Pages (${screens.length})`],
-            ['feedback', `Feedback (${comments.length})`],
+            ['feedback', `Feedback (${comments.length})${newAnswers(comments) ? ` · 💬 ${newAnswers(comments)} new` : ''}`],
             ['activity', 'Activity log'],
             ['settings', 'Settings'],
           ].map(([k, label]) => (
@@ -115,12 +123,33 @@ export default function ProjectAdmin() {
             urls={urls}
             mutate={mutate}
             screenHref={(s) => `/projects/${project.id}/screens/${s.id}`}
+            key={feedbackFilter ?? 'all'}
+            initialFilter={feedbackFilter}
           />
         )}
         {tab === 'activity' && <ActivityTab events={events} />}
         {tab === 'settings' && <SettingsTab project={project} mutate={mutate} />}
       </main>
     </>
+  );
+}
+
+const newAnswers = (comments) => comments.filter((c) => c.client_reply && !c.client_reply_seen_at).length;
+
+/** "The client answered 3 of your replies": answers to the team's questions shouldn't sit unnoticed. */
+export function NewAnswersBanner({ comments, onView }) {
+  const n = newAnswers(comments);
+  if (!n) return null;
+  return (
+    <div className="answers-banner">
+      <span className="grow">
+        💬 <strong>The client answered {n === 1 ? 'one of your replies' : `${n} of your replies`}.</strong> Take a look
+        and mark {n === 1 ? 'it' : 'them'} seen.
+      </span>
+      <button className="btn btn-sm btn-primary" onClick={onView}>
+        View {n === 1 ? 'answer' : 'answers'} →
+      </button>
+    </div>
   );
 }
 
@@ -744,12 +773,17 @@ function ScreenRow({ project, screen, comments, mutate, onMove, first, last, sel
 }
 
 /** Comments grouped by page with done/reply controls. Shared by the dashboard and the team link page. */
-export function FeedbackTab({ project, screens, comments, urls, mutate, screenHref, initialRound }) {
-  const [round, setRound] = useState(initialRound ?? project.current_round);
+export function FeedbackTab({ project, screens, comments, urls, mutate, screenHref, initialRound, initialFilter }) {
+  const [round, setRound] = useState(initialFilter === 'answers' ? 'all' : (initialRound ?? project.current_round));
   const [onlyOpen, setOnlyOpen] = useState(false);
+  const [onlyAnswers, setOnlyAnswers] = useState(initialFilter === 'answers');
+  const answerCount = newAnswers(comments);
   const rounds = [...new Set(comments.map((c) => c.round))].sort((a, b) => b - a);
   const shown = comments.filter(
-    (c) => (round === 'all' || c.round === round) && (!onlyOpen || (c.status === 'open' && isActionable(c))),
+    (c) =>
+      (round === 'all' || c.round === round) &&
+      (!onlyOpen || (c.status === 'open' && isActionable(c))) &&
+      (!onlyAnswers || (c.client_reply && !c.client_reply_seen_at)),
   );
   const inScope = comments.filter((c) => (round === 'all' || c.round === round) && isActionable(c));
   const handled = inScope.filter((c) => c.status !== 'open').length;
@@ -782,6 +816,12 @@ export function FeedbackTab({ project, screens, comments, urls, mutate, screenHr
           <input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} />
           <span>Only open</span>
         </label>
+        {(answerCount > 0 || onlyAnswers) && (
+          <label className="toggle">
+            <input type="checkbox" checked={onlyAnswers} onChange={(e) => setOnlyAnswers(e.target.checked)} />
+            <span>Only new client answers ({answerCount})</span>
+          </label>
+        )}
         <div className="grow" />
         {comments.length > 0 && (
           <div className="export-buttons">

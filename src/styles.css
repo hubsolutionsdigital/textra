@@ -2230,3 +2230,48 @@ label {
   padding: 6px 10px;
   margin-bottom: 8px;
 }
+.client-answer {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  background: #eef8f1;
+  border: 1px solid #c6e9d2;
+}
+.client-answer.new {
+  background: #e6f6ec;
+  border-color: var(--success);
+  box-shadow: 0 0 0 2px rgba(18, 120, 60, 0.12);
+}
+.client-answer .reply-tag.new {
+  background: var(--success);
+}
+.answer-box {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #fffbea;
+  border: 1px solid #f3d27a;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.answer-prompt {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.reply-tag.ask {
+  background: #fde7a8;
+  color: #7a4a00;
+}
+.answers-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: #e6f6ec;
+  border: 1px solid var(--success);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}

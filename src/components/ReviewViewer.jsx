@@ -30,6 +30,7 @@ export default function ReviewViewer({
   onOpenScreen,
   view,
   onSeenReply,
+  onAnswer,
   focus, // { id } of a comment to open, e.g. a team reply the client chose to see
 }) {
   const [zoom, setZoom] = useState(1);
@@ -144,6 +145,7 @@ export default function ReviewViewer({
     },
     onUpdate,
     onSeenReply,
+    onAnswer,
   });
 
   const renderOverlay = (pageNumber) => {

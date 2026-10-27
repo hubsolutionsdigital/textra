@@ -336,7 +336,8 @@ export function createApp(db, { mailer = createMailer() } = {}) {
         `SELECT p.*,
            (SELECT COUNT(*) FROM screens s WHERE s.project_id = p.id) AS screen_count,
            (SELECT COUNT(*) FROM comments c WHERE c.project_id = p.id AND c.round = p.current_round) AS round_comment_count,
-           (SELECT COUNT(*) FROM comments c WHERE c.project_id = p.id AND c.status = 'open' AND c.kind IN ('change', 'question')) AS open_comment_count
+           (SELECT COUNT(*) FROM comments c WHERE c.project_id = p.id AND c.status = 'open' AND c.kind IN ('change', 'question')) AS open_comment_count,
+           (SELECT COUNT(*) FROM comments c WHERE c.project_id = p.id AND c.client_reply != '' AND c.client_reply_seen_at IS NULL) AS new_answer_count
          FROM projects p WHERE p.owner_id = ? ORDER BY p.id DESC`,
       )
       .all(req.user.id);
@@ -792,6 +793,10 @@ export function createApp(db, { mailer = createMailer() } = {}) {
          reply_seen_by = CASE WHEN ? THEN NULL ELSE reply_seen_by END
        WHERE id = ?`,
     ).run(status, reply, reply ? important : 0, status, fresh ? 1 : 0, fresh ? 1 : 0, fresh ? 1 : 0, c.id);
+    // The team has seen the client's answer (they clicked Seen, or they replied again).
+    if (c.client_reply && (req.body.client_reply_seen || reply !== c.agency_reply)) {
+      db.prepare(`UPDATE comments SET client_reply_seen_at = datetime('now') WHERE id = ? AND client_reply_seen_at IS NULL`).run(c.id);
+    }
   }
 
   app.patch('/api/projects/:projectId/comments/:commentId', requireUser, (req, res) => {
@@ -949,6 +954,24 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       cleanup();
       throw err;
     }
+    res.json(projectBundle(q.project.get(p.id), { forClient: true }));
+  });
+
+  /** The client answers the team's reply, e.g. "Could you confirm if it should be free?" */
+  app.post('/api/share/:token/comments/:commentId/answer', (req, res) => {
+    const p = sharedProject(req);
+    const author = cleanName(req.body.author_name) || fail(400, 'Please enter your name first');
+    const c = q.comment.get(Number(req.params.commentId), p.id) ?? fail(404, 'Comment not found');
+    if (!c.agency_reply) fail(409, 'The team hasn’t replied to this comment yet');
+    const body = String(req.body.body ?? '').trim().slice(0, 4000);
+    if (!body) fail(400, 'Write your answer first');
+    db.prepare(
+      `UPDATE comments SET client_reply = ?, client_reply_by = ?, client_reply_at = datetime('now'), client_reply_seen_at = NULL,
+         reply_seen_at = COALESCE(reply_seen_at, datetime('now')), reply_seen_by = COALESCE(reply_seen_by, ?)
+       WHERE id = ?`,
+    ).run(body, author, author, c.id);
+    const screen = db.prepare('SELECT title FROM screens WHERE id = ?').get(c.screen_id);
+    logEvent(p, author, 'client_answered', `${author} answered the team’s reply on ${screen?.title ?? 'a page'}: “${body.slice(0, 80)}${body.length > 80 ? '…' : ''}”`);
     res.json(projectBundle(q.project.get(p.id), { forClient: true }));
   });
 

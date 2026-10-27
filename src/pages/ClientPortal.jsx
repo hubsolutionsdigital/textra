@@ -4,7 +4,7 @@ import { api, fileUrls } from '../api.js';
 import Modal from '../components/Modal.jsx';
 import ReviewViewer from '../components/ReviewViewer.jsx';
 import GuidedTour from '../components/GuidedTour.jsx';
-import CommentCard from '../components/CommentCard.jsx';
+import CommentCard, { ClientAnswer, asksQuestion } from '../components/CommentCard.jsx';
 import { KINDS, isActionable, ordinal, roundFocus } from '../guidance.js';
 import { celebrate } from '../confetti.js';
 import { plural, storage } from '../util.js';
@@ -97,6 +97,7 @@ export default function ClientPortal() {
     openSubmit: () => setSubmitOpen('manual'),
     replayWelcome: () => setWelcomeReplay((n) => n + 1),
     markRepliesSeen: (ids) => call('POST', '/replies/seen', { author_name: name, ids }),
+    answerReply: (c, body) => call('POST', `/comments/${c.id}/answer`, { author_name: name, body }),
     importantPending: importantUnread.length > 0,
   };
 
@@ -298,7 +299,7 @@ function screenStatus(data, screen, name) {
   return { reviewed, count };
 }
 
-function Overview({ data, name, urls, openSubmit, replayWelcome, markRepliesSeen }) {
+function Overview({ data, name, urls, openSubmit, replayWelcome, markRepliesSeen, answerReply }) {
   const { project, screens } = data;
   const navigate = useNavigate();
 
@@ -350,7 +351,7 @@ function Overview({ data, name, urls, openSubmit, replayWelcome, markRepliesSeen
         </section>
       )}
 
-      <TeamReplies data={data} markRepliesSeen={markRepliesSeen} />
+      <TeamReplies data={data} markRepliesSeen={markRepliesSeen} answerReply={answerReply} />
 
       <div className="overview-grid">
         <section>
@@ -414,13 +415,15 @@ function Overview({ data, name, urls, openSubmit, replayWelcome, markRepliesSeen
   );
 }
 
+const needsAnswer = (c) => asksQuestion(c) && !c.client_reply;
+
 const newReplies = (data, screenId) =>
   data.comments.filter((c) => c.screen_id === screenId && c.agency_reply && !c.reply_seen_at).length;
 
 const short = (t, n = 140) => (t && t.length > n ? `${t.slice(0, n - 1).trim()}…` : t);
 
 /** One team reply with the comment it answers, for the overview panel and the must-read popup. */
-function ReplyItem({ data, c, onOpen, onSeen }) {
+function ReplyItem({ data, c, onOpen, onSeen, onAnswer }) {
   const screen = data.screens.find((s) => s.id === c.screen_id);
   const kind = KINDS[c.kind] ?? KINDS.change;
   return (
@@ -430,6 +433,7 @@ function ReplyItem({ data, c, onOpen, onSeen }) {
         <span className="muted small"> · round {c.round}</span>
         {c.reply_important ? <span className="reply-tag important">📌 Important</span> : null}
         {!c.reply_seen_at && <span className="reply-tag new">New</span>}
+        {asksQuestion(c) && !c.client_reply && <span className="reply-tag ask">❓ Needs your answer</span>}
       </div>
       <div className="reply-you muted small">
         You said: {kind.emoji} {short(c.body) || kind.label}
@@ -437,13 +441,14 @@ function ReplyItem({ data, c, onOpen, onSeen }) {
       <div className="reply-text">
         <strong>Team reply:</strong> {c.agency_reply}
       </div>
+      <ClientAnswer comment={c} mode="client" onAnswer={onAnswer} />
       <div className="row">
         {screen && (
           <button className="link-btn" onClick={() => onOpen(c)}>
             See it on the page →
           </button>
         )}
-        {!c.reply_seen_at && onSeen && (
+        {!c.reply_seen_at && onSeen && !asksQuestion(c) && (
           <button className="btn btn-sm" onClick={() => onSeen([c.id])}>
             ✓ Got it
           </button>
@@ -454,13 +459,14 @@ function ReplyItem({ data, c, onOpen, onSeen }) {
 }
 
 /** "Replies from the team": every reply to the client's comments, unread first, so none get missed. */
-function TeamReplies({ data, markRepliesSeen }) {
+function TeamReplies({ data, markRepliesSeen, answerReply }) {
   const navigate = useNavigate();
   const [showAll, setShowAll] = useState(false);
   const replies = data.comments
     .filter((c) => c.agency_reply)
     .sort(
       (a, b) =>
+        needsAnswer(b) - needsAnswer(a) ||
         !!a.reply_seen_at - !!b.reply_seen_at ||
         b.reply_important - a.reply_important ||
         String(b.replied_at ?? '').localeCompare(String(a.replied_at ?? '')) ||
@@ -468,6 +474,7 @@ function TeamReplies({ data, markRepliesSeen }) {
     );
   if (!replies.length) return null;
   const unread = replies.filter((c) => !c.reply_seen_at);
+  const toAnswer = replies.filter(needsAnswer).length;
   const shown = showAll ? replies : replies.slice(0, Math.max(3, unread.length));
   return (
     <section className="team-replies">
@@ -483,7 +490,13 @@ function TeamReplies({ data, markRepliesSeen }) {
         )}
       </div>
       <p className="muted small">
-        The team answered some of your comments. Please read them, especially the 📌 important ones.
+        The team answered some of your comments. Please read them, especially the 📌 important ones
+        {toAnswer > 0 && (
+          <>
+            , and reply where the team asked you something (<strong>{toAnswer} waiting for your answer</strong>)
+          </>
+        )}
+        .
       </p>
       <ul className="reply-list">
         {shown.map((c) => (
@@ -492,6 +505,7 @@ function TeamReplies({ data, markRepliesSeen }) {
             data={data}
             c={c}
             onSeen={markRepliesSeen}
+            onAnswer={answerReply}
             onOpen={(cm) => navigate(`p/${cm.screen_id}`, { state: { focus: { id: cm.id } } })}
           />
         ))}
@@ -506,7 +520,7 @@ function TeamReplies({ data, markRepliesSeen }) {
 }
 
 /** Replies the team marked important pop up until the client confirms they've read them. */
-function ImportantRepliesModal({ data, token, replies, markRepliesSeen }) {
+function ImportantRepliesModal({ data, token, replies, markRepliesSeen, answerReply }) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   return (
@@ -520,6 +534,7 @@ function ImportantRepliesModal({ data, token, replies, markRepliesSeen }) {
             key={c.id}
             data={data}
             c={c}
+            onAnswer={answerReply}
             onOpen={async (cm) => {
               // Opening it on the page counts as reading it; the popup would otherwise cover the page.
               await markRepliesSeen([cm.id]);
@@ -715,7 +730,7 @@ function FeedbackLog({ data, urls }) {
   );
 }
 
-function ClientScreen({ data, name, call, urls, token, openSubmit, markRepliesSeen, importantPending }) {
+function ClientScreen({ data, name, call, urls, token, openSubmit, markRepliesSeen, answerReply, importantPending }) {
   const { screenId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -803,6 +818,7 @@ function ClientScreen({ data, name, call, urls, token, openSubmit, markRepliesSe
         onCreate={createComment}
         onDelete={(c) => call('DELETE', `/comments/${c.id}`, { author_name: name })}
         onSeenReply={(c) => markRepliesSeen([c.id])}
+        onAnswer={answerReply}
         focus={focus}
         toolbar={
           <>

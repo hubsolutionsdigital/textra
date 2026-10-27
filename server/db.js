@@ -164,6 +164,11 @@ function migrate(db) {
   if (!has('comments', 'reply_important')) db.exec('ALTER TABLE comments ADD COLUMN reply_important INTEGER NOT NULL DEFAULT 0');
   if (!has('comments', 'reply_seen_at')) db.exec('ALTER TABLE comments ADD COLUMN reply_seen_at TEXT');
   if (!has('comments', 'reply_seen_by')) db.exec('ALTER TABLE comments ADD COLUMN reply_seen_by TEXT');
+  // The client's answer to a team reply (e.g. a question back to them), and when the team saw it.
+  if (!has('comments', 'client_reply')) db.exec(`ALTER TABLE comments ADD COLUMN client_reply TEXT NOT NULL DEFAULT ''`);
+  if (!has('comments', 'client_reply_at')) db.exec('ALTER TABLE comments ADD COLUMN client_reply_at TEXT');
+  if (!has('comments', 'client_reply_by')) db.exec('ALTER TABLE comments ADD COLUMN client_reply_by TEXT');
+  if (!has('comments', 'client_reply_seen_at')) db.exec('ALTER TABLE comments ADD COLUMN client_reply_seen_at TEXT');
 }
 
 /** Run fn inside a transaction. */

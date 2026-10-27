@@ -307,6 +307,17 @@ export async function toDocx(data, readAttachment) {
           }),
         );
       }
+      if (c.client_reply) {
+        cell.push(
+          new Paragraph({
+            spacing: { before: 60 },
+            children: [
+              new TextRun({ text: `${c.client_reply_by || 'Client'} answered: `, bold: true, color: '12783C' }),
+              new TextRun(c.client_reply),
+            ],
+          }),
+        );
+      }
       const border = { style: BorderStyle.SINGLE, size: 4, color: 'D0D5DD' };
       children.push(
         new Table({
@@ -365,6 +376,7 @@ export function toHtml(data, readAttachment) {
   <div class="where">📍 <strong>Where:</strong> ${esc(c.location)}</div>
   ${c.body ? `<p>${esc(c.body).replace(/\n/g, '<br>')}</p>` : ''}${shots ? `<div class="shots">${shots}</div>` : ''}
   ${c.agency_reply ? `<div class="reply"><strong>Team reply:</strong> ${esc(c.agency_reply)}</div>` : ''}
+  ${c.client_reply ? `<div class="reply client"><strong>${esc(c.client_reply_by || 'Client')} answered:</strong> ${esc(c.client_reply)}</div>` : ''}
 </div>`;
         })
         .join('\n');
@@ -388,6 +400,7 @@ export function toHtml(data, readAttachment) {
   .st-done,.st-wontfix{background:#d1fadf;color:#027a48}
   .shots img{max-width:100%;max-height:420px;border:1px solid #eaecf0;border-radius:6px;margin-top:6px;display:block}
   .reply{margin-top:6px;padding:6px 10px;border-left:3px solid #1b3a6b;background:#f5f8fc}
+  .reply.client{border-left-color:#12783c;background:#eef8f1}
   .bar{position:sticky;top:0;background:#fff;padding:8px 0;margin-bottom:8px;text-align:right}
   .bar button{font:inherit;font-weight:600;background:#1b3a6b;color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer}
   section.has+section{break-before:auto} section.has:not(:first-of-type){break-before:page}

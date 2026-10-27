@@ -82,6 +82,9 @@ export default function Projects() {
                 <div className="project-card-meta">
                   <span>{plural(p.screen_count, 'page')}</span>
                   <span>{plural(p.open_comment_count, 'open comment')}</span>
+                  {p.new_answer_count > 0 && (
+                    <span className="badge badge-green">💬 {plural(p.new_answer_count, 'new client answer')}</span>
+                  )}
                 </div>
               </Link>
             );

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { api, fileUrls } from '../api.js';
-import { FeedbackTab, RoundStepper } from './ProjectAdmin.jsx';
+import { FeedbackTab, NewAnswersBanner, RoundStepper } from './ProjectAdmin.jsx';
 import { stageInfo } from '../stage.js';
 
 /**
@@ -13,6 +13,7 @@ export default function TeamReview() {
   const [params] = useSearchParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [answersOnly, setAnswersOnly] = useState(0); // bumps to open Feedback on the client's new answers
   const apiBase = `/api/team/${teamToken}`;
 
   const load = useCallback(() => api('GET', apiBase).then(setData, (e) => setError(e.message)), [apiBase]);
@@ -52,8 +53,11 @@ export default function TeamReview() {
             </p>
           </div>
         </div>
+        <NewAnswersBanner comments={comments} onView={() => setAnswersOnly((n) => n + 1)} />
         {error && <div className="form-error">{error}</div>}
         <FeedbackTab
+          key={answersOnly}
+          initialFilter={answersOnly ? 'answers' : null}
           project={project}
           screens={screens}
           comments={comments}

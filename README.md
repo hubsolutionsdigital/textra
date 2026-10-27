@@ -58,6 +58,10 @@ approval and a "development has started" hand-off.
 - **Replies from the team** on the overview lists every reply to their comments, new ones first, with
   **See it on the page** and **Got it**. Pages with new replies get a badge, and each page says "The team replied
   to 2 comments on this page · Show me". Replies marked important pop up until the client clicks **I've read this**.
+- Clients can **reply to the team's replies**. When a reply asks them something (it has a "?"), the reply box opens
+  straight away and the reply is tagged "❓ Needs your answer". Their answers are highlighted for the team: a banner on
+  the project ("The client answered 2 of your replies"), a count on the Feedback tab and the projects list, and an
+  "Only new client answers" filter. Click **✓ Seen** (or reply again) to clear it. Answers are in the exports too.
 - Submitting locks the round with a confetti celebration. When the next round opens, the client uses the same link.
   Earlier comments show as faint dots on the design, and hovering one reveals what was said, plus the agency's status and reply.
   While the team works, the client sees live progress ("2 of 3 done") and each change request marked

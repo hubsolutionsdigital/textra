@@ -24,6 +24,7 @@ export default function CommentCard({
   pending,
   hiddenHere,
   onSeenReply,
+  onAnswer,
 }) {
   const kind = KINDS[comment.kind] ?? KINDS.change;
   const [reply, setReply] = useState(comment.agency_reply);
@@ -82,7 +83,7 @@ export default function CommentCard({
           {comment.reply_important ? <span className="reply-tag important">📌 Important</span> : null}
           {mode === 'client' && !comment.reply_seen_at && <span className="reply-tag new">New</span>}
           <strong>Studio reply:</strong> {comment.agency_reply}
-          {mode === 'client' && !comment.reply_seen_at && onSeenReply && (
+          {mode === 'client' && !comment.reply_seen_at && onSeenReply && !asksQuestion(comment) && (
             <div>
               <button className="link-btn" onClick={() => onSeenReply(comment)}>
                 ✓ Got it
@@ -97,6 +98,9 @@ export default function CommentCard({
             </div>
           )}
         </div>
+      )}
+      {comment.agency_reply && !editingReply && (
+        <ClientAnswer comment={comment} mode={mode} onAnswer={onAnswer} onUpdate={onUpdate} />
       )}
       {mode === 'client' && canDelete && (
         <button className="link-btn danger" onClick={() => onDelete(comment)}>
@@ -179,5 +183,112 @@ export default function CommentCard({
         </div>
       )}
     </div>
+  );
+}
+
+/** The team's reply asks the client something ("Could you confirm…?"), so we invite an answer up front. */
+export const asksQuestion = (comment) => (comment.agency_reply || '').includes('?');
+
+/** The client's answer to a team reply: a reply box for the client, a highlighted answer for the team. */
+export function ClientAnswer({ comment, mode, onAnswer, onUpdate }) {
+  const [open, setOpen] = useState(false);
+  const answered = !!comment.client_reply;
+
+  if (mode === 'agency') {
+    if (!answered) return null;
+    const isNew = !comment.client_reply_seen_at;
+    return (
+      <div className={`client-answer ${isNew ? 'new' : ''}`}>
+        {isNew && <span className="reply-tag new">New answer</span>}
+        <strong>💬 {comment.client_reply_by || 'Client'} answered:</strong> {comment.client_reply}
+        <div className="muted small">
+          {timeAgo(comment.client_reply_at)}
+          {isNew && onUpdate && (
+            <>
+              {' · '}
+              <button className="link-btn" onClick={() => onUpdate(comment, { client_reply_seen: true })}>
+                ✓ Seen
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (!onAnswer) {
+    return answered ? (
+      <div className="client-answer">
+        <strong>💬 Your answer:</strong> {comment.client_reply}
+      </div>
+    ) : null;
+  }
+  if (answered && !open) {
+    return (
+      <div className="client-answer">
+        <strong>💬 Your answer:</strong> {comment.client_reply}{' '}
+        <button className="link-btn" onClick={() => setOpen(true)}>
+          Edit
+        </button>
+      </div>
+    );
+  }
+  const question = asksQuestion(comment);
+  if (!question && !open) {
+    return (
+      <button className="link-btn" onClick={() => setOpen(true)}>
+        ↩ Reply to the team
+      </button>
+    );
+  }
+  return (
+    <AnswerBox
+      initial={comment.client_reply}
+      prompt={question && !answered ? 'The team asked you a question. Reply here:' : 'Your reply to the team:'}
+      onCancel={answered || !question ? () => setOpen(false) : undefined}
+      onSend={async (body) => {
+        await onAnswer(comment, body);
+        setOpen(false);
+      }}
+    />
+  );
+}
+
+function AnswerBox({ initial = '', prompt, onSend, onCancel }) {
+  const [body, setBody] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  return (
+    <form
+      className="answer-box"
+      onClick={(e) => e.stopPropagation()}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!body.trim()) return;
+        setBusy(true);
+        setError('');
+        try {
+          await onSend(body.trim());
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <label className="answer-prompt">{prompt}</label>
+      <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={2} placeholder="Type your answer…" />
+      {error && <div className="form-error">{error}</div>}
+      <div className="row">
+        <button className="btn btn-sm btn-primary" disabled={busy || !body.trim()}>
+          {busy ? 'Sending…' : 'Send reply'}
+        </button>
+        {onCancel && (
+          <button type="button" className="link-btn" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
   );
 }

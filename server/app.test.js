@@ -764,3 +764,46 @@ test('team replies: important flag, client confirms reading, a changed reply is 
   r = await api('PATCH', `/api/projects/${projectId}/comments/${id}`, { agency_reply: '' });
   assert.equal(r.data.comments[0].reply_important, 0, 'no reply, nothing important');
 });
+
+test('client answers the team’s question; the team sees it highlighted until marked seen', async () => {
+  await api('POST', '/api/auth/register', { email: 'answers@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Answers', notify_emails: 'pm@studio.test' });
+  const { id: projectId, share_token: shareToken, team_token: teamToken } = r.data.project;
+  const fd = new FormData();
+  fd.append('title', 'Corporate orders');
+  fd.append('file', pdfBlob(), 'corp.pdf');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'pearline' }, { agency: false });
+  r = await api('POST', `/api/share/${shareToken}/comments`, { author_name: 'pearline', screen_id: r.data.screens[0].id, kind: 'change', body: 'Is the paper bag free?', x: 0.5, y: 0.5 }, { agency: false });
+  const id = r.data.comments[0].id;
+
+  r = await api('POST', `/api/share/${shareToken}/comments/${id}/answer`, { author_name: 'pearline', body: 'Free?' }, { agency: false });
+  assert.equal(r.status, 409, 'nothing to answer before the team replies');
+  await api('PATCH', `/api/projects/${projectId}/comments/${id}`, { agency_reply: 'It is a S$1.50 add-on. Should it be free for corporate orders?' });
+  r = await api('POST', `/api/share/${shareToken}/comments/${id}/answer`, { author_name: 'pearline', body: '' }, { agency: false });
+  assert.equal(r.status, 400);
+  r = await api('POST', `/api/share/${shareToken}/comments/${id}/answer`, { author_name: 'pearline', body: 'Yes, free for corporate orders.' }, { agency: false });
+  let c = r.data.comments[0];
+  assert.equal(c.client_reply, 'Yes, free for corporate orders.');
+  assert.equal(c.client_reply_by, 'pearline');
+  assert.ok(c.reply_seen_at, 'answering counts as having read the reply');
+
+  r = await api('GET', '/api/projects');
+  assert.equal(r.data.projects.find((p) => p.id === projectId).new_answer_count, 1);
+  r = await api('GET', `/api/projects/${projectId}`);
+  assert.equal(r.data.comments[0].client_reply_seen_at, null);
+  assert.match(r.data.events[0].message, /pearline answered the team’s reply on Corporate orders/);
+
+  r = await api('PATCH', `/api/team/${teamToken}/comments/${id}`, { client_reply_seen: true });
+  assert.ok(r.data.comments[0].client_reply_seen_at, 'marked seen from the team link');
+  r = await api('GET', '/api/projects');
+  assert.equal(r.data.projects.find((p) => p.id === projectId).new_answer_count, 0);
+
+  const exp = await fetch(`${base}/api/team/${teamToken}/export?format=html`);
+  assert.match(await exp.text(), /pearline answered:<\/strong> Yes, free for corporate orders\./);
+
+  // a changed answer is new again
+  r = await api('POST', `/api/share/${shareToken}/comments/${id}/answer`, { author_name: 'pearline', body: 'Actually, free only above 10 boxes.' }, { agency: false });
+  r = await api('GET', `/api/projects/${projectId}`);
+  assert.equal(r.data.comments[0].client_reply_seen_at, null);
+});
