@@ -31,7 +31,8 @@ export default function ReviewViewer({
   view,
   onSeenReply,
   onAnswer,
-  focus, // { id } of a comment to open, e.g. a team reply the client chose to see
+  focus,
+  previewOnly, // prospect preview: just the design, no comments or feedback controls // { id } of a comment to open, e.g. a team reply the client chose to see
 }) {
   const [zoom, setZoom] = useState(1);
   const [showPast, setShowPast] = useState(true);
@@ -280,10 +281,12 @@ export default function ReviewViewer({
       <div className="viewer-toolbar">
         {toolbar}
         <div className="toolbar-spacer" />
-        <label className="toggle" data-tour="earlier">
-          <input type="checkbox" checked={showPast} onChange={(e) => setShowPast(e.target.checked)} />
-          <span>Earlier feedback</span>
-        </label>
+        {!previewOnly && (
+          <label className="toggle" data-tour="earlier">
+            <input type="checkbox" checked={showPast} onChange={(e) => setShowPast(e.target.checked)} />
+            <span>Earlier feedback</span>
+          </label>
+        )}
         {isHtml && (
           <>
             <div className="segmented" role="group" aria-label="Screen size" data-tour="devices">
@@ -398,71 +401,73 @@ export default function ReviewViewer({
           )}
         </div>
 
-        <aside className="viewer-sidebar">
-          {/* One scroll area: the notes on top scroll away, the tabs stay pinned, the footer stays put. */}
-          <div className="sidebar-scroll">
-            {sidebarTop}
-            <div className="tabs" data-tour="comments">
-              <button className={tab === 'current' ? 'active' : ''} onClick={() => setTab('current')}>
-                {liveRound ? `Round ${liveRound}` : 'Latest'} <span className="count">{live.length}</span>
-              </button>
-              <button
-                className={tab === 'past' ? 'active' : ''}
-                onClick={(e) => {
-                  setTab('past');
-                  e.currentTarget.closest('.tabs')?.scrollIntoView({ block: 'nearest' });
-                }}
-              >
-                Earlier rounds <span className="count">{past.length}</span>
-              </button>
-            </div>
-            <div className="comment-list">
-              {tab === 'past' && mode === 'client' && pastReplied.length > 0 && pastReplied.length < past.length && (
-                <div className="past-filter">
-                  {filterPast ? (
-                    <>
-                      Showing the {plural(pastReplied.length, 'comment')} the team replied to.{' '}
-                      <button className="link-btn" onClick={() => setShowAllPast(true)}>
-                        Show all {past.length}
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      Showing all {past.length} earlier comments.{' '}
-                      <button className="link-btn" onClick={() => setShowAllPast(false)}>
-                        Only replied ({pastReplied.length})
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-              {list.length === 0 && (
-                <div className="empty-note">
-                  {tab === 'current'
-                    ? canComment
-                      ? 'No comments yet. Click anywhere on the design to leave one.'
-                      : 'No comments in this round.'
-                    : 'Nothing from earlier rounds on this page.'}
-                </div>
-              )}
-              {list.map((c, i) => (
-                <div key={c.id}>
-                  {tab === 'past' && (i === 0 || list[i - 1].round !== c.round) && (
-                    <div className="round-divider">Round {c.round}</div>
-                  )}
-                  <div
-                    id={`card-${c.id}`}
-                    className={`comment-list-item ${activeId === c.id ? 'active' : ''}`}
-                    onClick={() => focusComment(c)}
-                  >
-                    <CommentCard {...cardProps(c)} compact={mode === 'client'} />
+        {!previewOnly && (
+          <aside className="viewer-sidebar">
+            {/* One scroll area: the notes on top scroll away, the tabs stay pinned, the footer stays put. */}
+            <div className="sidebar-scroll">
+              {sidebarTop}
+              <div className="tabs" data-tour="comments">
+                <button className={tab === 'current' ? 'active' : ''} onClick={() => setTab('current')}>
+                  {liveRound ? `Round ${liveRound}` : 'Latest'} <span className="count">{live.length}</span>
+                </button>
+                <button
+                  className={tab === 'past' ? 'active' : ''}
+                  onClick={(e) => {
+                    setTab('past');
+                    e.currentTarget.closest('.tabs')?.scrollIntoView({ block: 'nearest' });
+                  }}
+                >
+                  Earlier rounds <span className="count">{past.length}</span>
+                </button>
+              </div>
+              <div className="comment-list">
+                {tab === 'past' && mode === 'client' && pastReplied.length > 0 && pastReplied.length < past.length && (
+                  <div className="past-filter">
+                    {filterPast ? (
+                      <>
+                        Showing the {plural(pastReplied.length, 'comment')} the team replied to.{' '}
+                        <button className="link-btn" onClick={() => setShowAllPast(true)}>
+                          Show all {past.length}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        Showing all {past.length} earlier comments.{' '}
+                        <button className="link-btn" onClick={() => setShowAllPast(false)}>
+                          Only replied ({pastReplied.length})
+                        </button>
+                      </>
+                    )}
                   </div>
-                </div>
-              ))}
+                )}
+                {list.length === 0 && (
+                  <div className="empty-note">
+                    {tab === 'current'
+                      ? canComment
+                        ? 'No comments yet. Click anywhere on the design to leave one.'
+                        : 'No comments in this round.'
+                      : 'Nothing from earlier rounds on this page.'}
+                  </div>
+                )}
+                {list.map((c, i) => (
+                  <div key={c.id}>
+                    {tab === 'past' && (i === 0 || list[i - 1].round !== c.round) && (
+                      <div className="round-divider">Round {c.round}</div>
+                    )}
+                    <div
+                      id={`card-${c.id}`}
+                      className={`comment-list-item ${activeId === c.id ? 'active' : ''}`}
+                      onClick={() => focusComment(c)}
+                    >
+                      <CommentCard {...cardProps(c)} compact={mode === 'client'} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-          {footer}
-        </aside>
+            {footer}
+          </aside>
+        )}
       </div>
     </div>
   );

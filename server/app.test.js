@@ -807,3 +807,68 @@ test('client answers the team’s question; the team sees it highlighted until m
   r = await api('GET', `/api/projects/${projectId}`);
   assert.equal(r.data.comments[0].client_reply_seen_at, null);
 });
+
+test('prospect preview links: no comments, name collected, expire within 5 days or when turned off', async () => {
+  await api('POST', '/api/auth/register', { email: 'preview@studio.test', name: 'Hub Solutions', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'TILY TEA', notify_emails: 'pm@studio.test' });
+  const { id: projectId, share_token: shareToken } = r.data.project;
+  let fd = new FormData();
+  fd.append('title', 'Home');
+  fd.append('file', new Blob(['<html><body><h1>Tea</h1><img src="/img/a.png"></body></html>'], { type: 'text/html' }), 'index.html');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  fd = new FormData();
+  fd.append('title', 'Brochure');
+  fd.append('file', pdfBlob(), 'brochure.pdf');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'Client' }, { agency: false });
+  await api('POST', `/api/share/${shareToken}/comments`, { author_name: 'Client', screen_id: r.data.screens[0].id, kind: 'change', body: 'Secret client feedback', x: 0.5, y: 0.5 }, { agency: false });
+
+  r = await api('POST', `/api/projects/${projectId}/previews`, { days: 6 });
+  assert.equal(r.status, 400, 'at most 5 days');
+  r = await api('POST', `/api/projects/${projectId}/previews`, { days: 5, label: 'Acme' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const link = r.data.links[0];
+  assert.equal(link.label, 'Acme');
+  const days = (Date.parse(`${link.expires_at.replace(' ', 'T')}Z`) - Date.now()) / 864e5;
+  assert.ok(days > 4.9 && days <= 5, `expires in 5 days (${days})`);
+
+  r = await api('GET', `/api/preview/${link.token}`, undefined, { agency: false });
+  assert.equal(r.status, 200);
+  const text = JSON.stringify(r.data);
+  assert.doesNotMatch(text, /Secret client feedback|share_token|team_token|notify_emails|stored_name/, 'no comments or private fields');
+  assert.equal(r.data.screens.length, 2);
+  const [home, brochure] = r.data.screens;
+  assert.match(home.current_version.site_token, new RegExp(`^pv\\.${link.token}\\.\\d+$`));
+
+  r = await api('POST', `/api/preview/${link.token}/view`, { name: '' }, { agency: false });
+  assert.equal(r.status, 400);
+  r = await api('POST', `/api/preview/${link.token}/view`, { name: 'Jamie Tan' }, { agency: false });
+  assert.equal(r.status, 200);
+  r = await api('GET', `/api/projects/${projectId}/previews`);
+  assert.deepEqual(r.data.links[0].views.map((v) => v.name), ['Jamie Tan']);
+
+  let page = await fetch(`${base}/sites/${home.current_version.site_token}/index.html`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), new RegExp(`src="/sites/pv\\.${link.token}\\.\\d+/img/a\\.png"`), 'assets stay behind the preview link');
+  page = await fetch(`${base}/api/preview/${link.token}/versions/${brochure.current_version.id}/file`);
+  assert.equal(page.status, 200);
+
+  // turned off: the API and the design pages stop working
+  r = await api('DELETE', `/api/projects/${projectId}/previews/${link.id}`);
+  assert.ok(r.data.links[0].revoked_at);
+  r = await api('GET', `/api/preview/${link.token}`, undefined, { agency: false });
+  assert.equal(r.status, 410);
+  page = await fetch(`${base}/sites/${home.current_version.site_token}/index.html`);
+  assert.equal(page.status, 410);
+
+  // expired
+  r = await api('POST', `/api/projects/${projectId}/previews`, { days: 1 });
+  const second = r.data.links[0];
+  const { DatabaseSync } = await import('node:sqlite');
+  const raw = new DatabaseSync(path.join(dir, 'test.db'));
+  raw.prepare(`UPDATE preview_links SET expires_at = datetime('now', '-1 minute') WHERE id = ?`).run(second.id);
+  raw.close();
+  r = await api('GET', `/api/preview/${second.token}`, undefined, { agency: false });
+  assert.equal(r.status, 410);
+  assert.match(r.data.error, /expired/);
+});

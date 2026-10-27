@@ -829,6 +829,94 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     sendStored(res, a.stored_name, a.mime);
   });
 
+  // ---------- prospect preview links ----------
+
+  const PREVIEW_MAX_DAYS = 5;
+  /** A preview link that still works (not expired, not revoked), or null. */
+  const livePreview = (tok) =>
+    db
+      .prepare(`SELECT * FROM preview_links WHERE token = ? AND revoked_at IS NULL AND expires_at > datetime('now')`)
+      .get(String(tok)) ?? null;
+  const previewLinks = (p) =>
+    db
+      .prepare('SELECT * FROM preview_links WHERE project_id = ? ORDER BY id DESC')
+      .all(p.id)
+      .map((l) => ({
+        ...l,
+        views: db.prepare('SELECT name, viewed_at FROM preview_views WHERE link_id = ? ORDER BY id DESC').all(l.id),
+      }));
+
+  app.get('/api/projects/:projectId/previews', requireUser, (req, res) => {
+    res.json({ links: previewLinks(ownedProject(req)) });
+  });
+
+  app.post('/api/projects/:projectId/previews', requireUser, (req, res) => {
+    const p = ownedProject(req);
+    const days = Math.round(Number(req.body.days ?? PREVIEW_MAX_DAYS));
+    if (!(days >= 1 && days <= PREVIEW_MAX_DAYS)) fail(400, `A preview link can last 1 to ${PREVIEW_MAX_DAYS} days`);
+    const label = cleanName(req.body.label);
+    db.prepare(
+      `INSERT INTO preview_links (project_id, token, label, expires_at) VALUES (?, ?, ?, datetime('now', ?))`,
+    ).run(p.id, token(18), label, `+${days} days`);
+    logEvent(p, req.user.name, 'preview_created', `Preview link created${label ? ` for ${label}` : ''} (valid ${days} day${days === 1 ? '' : 's'})`);
+    res.json({ links: previewLinks(p) });
+  });
+
+  app.delete('/api/projects/:projectId/previews/:linkId', requireUser, (req, res) => {
+    const p = ownedProject(req);
+    db.prepare(`UPDATE preview_links SET revoked_at = datetime('now') WHERE id = ? AND project_id = ? AND revoked_at IS NULL`).run(
+      Number(req.params.linkId),
+      p.id,
+    );
+    res.json({ links: previewLinks(p) });
+  });
+
+  /** The project as a prospect sees it: the latest version of each page and nothing else. */
+  const previewBundle = (link) => {
+    const p = q.project.get(link.project_id);
+    const owner = db.prepare('SELECT name FROM users WHERE id = ?').get(p.owner_id);
+    const screens = q.screens
+      .all(p.id)
+      .map((s) => {
+        const v = latestVersion(s.id);
+        if (!v) return null;
+        const version = {
+          id: v.id,
+          kind: v.kind,
+          entry: v.entry,
+          original_name: v.original_name,
+          ...(v.kind === 'html' && { site_token: `pv.${link.token}.${v.id}`, site_group: v.asset_base || v.stored_name }),
+        };
+        return { id: s.id, title: s.title, note: s.note, position: s.position, versions: [version], current_version: version };
+      })
+      .filter(Boolean);
+    return {
+      project: { name: p.name, client_name: p.client_name, agency_name: owner?.name ?? '', stage: 'preview', current_round: 1, max_rounds: p.max_rounds },
+      screens,
+      expires_at: link.expires_at,
+      label: link.label,
+    };
+  };
+  const previewLink = (req) =>
+    livePreview(req.params.previewToken) ?? fail(410, 'This preview link has expired. Please ask for a new one.');
+
+  app.get('/api/preview/:previewToken', (req, res) => {
+    res.json(previewBundle(previewLink(req)));
+  });
+
+  app.post('/api/preview/:previewToken/view', (req, res) => {
+    const link = previewLink(req);
+    const name = cleanName(req.body.name) || fail(400, 'Please enter your name');
+    db.prepare('INSERT INTO preview_views (link_id, name) VALUES (?, ?)').run(link.id, name);
+    res.json(previewBundle(link));
+  });
+
+  app.get('/api/preview/:previewToken/versions/:versionId/file', (req, res) => {
+    const link = previewLink(req);
+    const v = q.version.get(Number(req.params.versionId), link.project_id) ?? fail(404, 'File not found');
+    sendStored(res, v.stored_name, 'application/pdf', v.original_name);
+  });
+
   // ---------- feedback export ----------
 
   /** One document with every comment, page by page: ?format=docx|html&round=all|N&open=1 */
@@ -1216,8 +1304,17 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   });
 
   app.get(['/sites/:siteToken', '/sites/:siteToken/*rest'], (req, res) => {
-    const v = db.prepare(`SELECT * FROM versions WHERE site_token = ? AND kind = 'html'`).get(req.params.siteToken);
-    if (!v) return res.status(404).type('text/plain').send('Not found');
+    // Prospect previews reach a page through their own link ("pv.<preview token>.<version id>"), so the page
+    // stops working when the preview expires or is revoked. Everyone else uses the version's own site token.
+    const pv = /^pv\.([\w-]+)\.(\d+)$/.exec(req.params.siteToken);
+    const link = pv && livePreview(pv[1]);
+    const v = pv
+      ? link && db.prepare(
+          `SELECT v.* FROM versions v JOIN screens s ON s.id = v.screen_id WHERE v.id = ? AND s.project_id = ? AND v.kind = 'html'`,
+        ).get(Number(pv[2]), link.project_id)
+      : db.prepare(`SELECT * FROM versions WHERE site_token = ? AND kind = 'html'`).get(req.params.siteToken);
+    if (!v) return res.status(pv ? 410 : 404).type('text/plain').send(pv ? 'This preview link has expired' : 'Not found');
+    if (pv) v.site_token = req.params.siteToken;
     const parts = [].concat(req.params.rest ?? []);
     // Optional first segment "~mobile" etc.: the screen size being previewed (see serveSiteFile).
     const device = /^~(desktop|laptop|tablet|mobile)$/.exec(parts[0] ?? '')?.[1] ?? null;

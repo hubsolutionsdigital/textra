@@ -104,6 +104,24 @@ CREATE TABLE IF NOT EXISTS events (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Comment-free preview links for prospects: expire after a few days; each viewer leaves their name.
+CREATE TABLE IF NOT EXISTS preview_links (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  token TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL DEFAULT '',
+  expires_at TEXT NOT NULL,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS preview_views (
+  id INTEGER PRIMARY KEY,
+  link_id INTEGER NOT NULL REFERENCES preview_links(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  viewed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Per-agency outgoing email account (Zoho Mail, Gmail or any SMTP). Password is encrypted.
 CREATE TABLE IF NOT EXISTS mail_settings (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

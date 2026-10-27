@@ -21,6 +21,9 @@ approval and a "development has started" hand-off.
 - Wrong upload? **Select pages** to delete several at once, or **Delete all pages** to start over. Both ask twice
   (a summary, then typing DELETE), because the pages' comments are deleted too. The client link stays the same.
 - Copy the client link. The same link works for every round.
+- **Preview links for prospects** (on the project page): a comment-free link to the latest designs, valid 1–5 days.
+  Viewers only enter their name; you see who opened it and how often, and can turn a link off early. When it expires,
+  the link and the prototype pages behind it stop working.
 - See feedback live, mark comments **Done** or **Discussed**, and reply. Tick **📌 Important** on a reply when the
   client must see it. Each reply shows whether the client has read it ("Read by Kei · 2h ago").
 - **Export feedback** from the Feedback tab as one document, page by page (Page 1: Home, Page 2: …): a **Word**

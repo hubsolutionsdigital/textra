@@ -6,7 +6,7 @@ import CommentCard from '../components/CommentCard.jsx';
 import Modal from '../components/Modal.jsx';
 import { isActionable, versionLabel } from '../guidance.js';
 import { shareUrl, stageInfo } from '../stage.js';
-import { formatDate, plural } from '../util.js';
+import { formatDate, parseDate, plural, timeAgo } from '../util.js';
 
 export default function ProjectAdmin() {
   const { projectId } = useParams();
@@ -80,6 +80,7 @@ export default function ProjectAdmin() {
 
         <RoundStepper project={project} />
         <ShareBox project={project} />
+        <PreviewLinks project={project} />
         <NextStep project={project} screens={screens} comments={comments} mutate={mutate} />
         <NewAnswersBanner
           comments={comments}
@@ -206,6 +207,128 @@ function ShareBox({ project }) {
           Open as client ↗
         </a>
       </div>
+    </div>
+  );
+}
+
+/** Comment-free preview links for prospects: valid 1–5 days, each viewer leaves their name. */
+function PreviewLinks({ project }) {
+  const [links, setLinks] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [days, setDays] = useState(5);
+  const [label, setLabel] = useState('');
+  const [copied, setCopied] = useState(null);
+  const [error, setError] = useState('');
+  const base = `/api/projects/${project.id}/previews`;
+  useEffect(() => {
+    api('GET', base).then((d) => setLinks(d.links), () => setLinks([]));
+  }, [base]);
+  const run = async (method, url, body) => {
+    setError('');
+    try {
+      setLinks((await api(method, url, body)).links);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  if (!links) return null;
+  const urlOf = (l) => `${window.location.origin}/p/${l.token}`;
+  const live = (l) => !l.revoked_at && parseDate(l.expires_at) > new Date();
+  const active = links.filter(live);
+  const shown = open ? links : active;
+
+  return (
+    <div className="preview-box">
+      <div className="row">
+        <div className="grow">
+          <strong>Preview links for prospects</strong>
+          <div className="muted small">
+            Just the designs: no comments or review steps. Viewers enter their name; links expire after up to 5 days.
+          </div>
+        </div>
+        {links.length > active.length && (
+          <button className="link-btn" onClick={() => setOpen((v) => !v)}>
+            {open ? 'Hide expired' : `Show expired (${links.length - active.length})`}
+          </button>
+        )}
+      </div>
+      <form
+        className="row preview-create"
+        onSubmit={(e) => {
+          e.preventDefault();
+          run('POST', base, { days, label }).then(() => setLabel(''));
+        }}
+      >
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="Who is it for? (optional, e.g. Acme Pte Ltd)"
+          maxLength={80}
+        />
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Valid for">
+          {[1, 2, 3, 4, 5].map((d) => (
+            <option key={d} value={d}>
+              Valid {d} day{d === 1 ? '' : 's'}
+            </option>
+          ))}
+        </select>
+        <button className="btn btn-primary">Create preview link</button>
+      </form>
+      {error && <div className="form-error">{error}</div>}
+      {shown.length > 0 && (
+        <ul className="preview-list">
+          {shown.map((l) => (
+            <li key={l.id} className={live(l) ? '' : 'expired'}>
+              <div className="row">
+                <div className="grow">
+                  <strong>{l.label || 'Preview link'}</strong>{' '}
+                  <span className="muted small">
+                    {l.revoked_at
+                      ? '· turned off'
+                      : live(l)
+                        ? `· expires ${formatDate(l.expires_at)}`
+                        : `· expired ${formatDate(l.expires_at)}`}
+                  </span>
+                </div>
+                {live(l) && (
+                  <>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(urlOf(l));
+                        setCopied(l.id);
+                        setTimeout(() => setCopied(null), 1500);
+                      }}
+                    >
+                      {copied === l.id ? 'Copied ✓' : 'Copy link'}
+                    </button>
+                    <a className="btn btn-sm btn-ghost" href={urlOf(l)} target="_blank" rel="noreferrer">
+                      Open ↗
+                    </a>
+                    <button
+                      className="btn btn-sm btn-ghost danger"
+                      onClick={() =>
+                        window.confirm('Turn off this preview link now? Anyone using it will lose access.') &&
+                        run('DELETE', `${base}/${l.id}`)
+                      }
+                    >
+                      Turn off
+                    </button>
+                  </>
+                )}
+              </div>
+              {live(l) && <code className="preview-url">{urlOf(l)}</code>}
+              <div className="muted small">
+                {l.views.length === 0
+                  ? 'Not opened yet'
+                  : `👀 Viewed by ${[...new Set(l.views.map((v) => v.name))].join(', ')} · ${l.views.length} visit${
+                      l.views.length === 1 ? '' : 's'
+                    }, last ${timeAgo(l.views[0].viewed_at)}`}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

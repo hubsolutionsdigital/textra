@@ -8,6 +8,7 @@ import ProjectAdmin from './pages/ProjectAdmin.jsx';
 import AgencyScreen from './pages/AgencyScreen.jsx';
 import ClientPortal from './pages/ClientPortal.jsx';
 import TeamReview from './pages/TeamReview.jsx';
+import PreviewPortal from './pages/PreviewPortal.jsx';
 import EmailSettings from './pages/EmailSettings.jsx';
 import '@fontsource-variable/dm-sans';
 import '@fontsource-variable/dm-sans/wght-italic.css';
@@ -20,6 +21,7 @@ createRoot(document.getElementById('root')).render(
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/r/:token/*" element={<ClientPortal />} />
+          <Route path="/p/:previewToken/*" element={<PreviewPortal />} />
           <Route path="/t/:teamToken" element={<TeamReview />} />
           <Route path="/t/:teamToken/screens/:screenId" element={<AgencyScreen />} />
           <Route element={<RequireAuth />}>
