@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, fileUrls } from '../api.js';
 import ReviewViewer from '../components/ReviewViewer.jsx';
-import { formatDate, storage } from '../util.js';
+import { storage } from '../util.js';
 
 /**
- * A comment-free preview of a project for prospects: they enter their name, then browse the latest
- * version of every page. The link expires after a few days (set by the agency, 5 at most).
+ * A comment-free preview of a project for prospects: they enter their name, then land on the home page and
+ * move around through the design's own menus, like the real website. The link expires after a few days
+ * (set by the agency, 5 at most).
  */
 export default function PreviewPortal() {
   const { previewToken } = useParams();
@@ -69,21 +70,22 @@ export default function PreviewPortal() {
   }
 
   const ctx = { data, name, previewToken, urls: fileUrls({ previewToken }) };
+  const first = data.screens[0];
   return (
-    <div className="client-shell">
-      <header className="client-header">
-        <Link to="." className="client-title">
-          <span className="muted small">{project.agency_name}</span>
-          <strong>{project.name}</strong>
-        </Link>
-        <span className="round-pill">Preview</span>
-        <div className="grow" />
-        <span className="muted small hide-sm">
-          Hi, {name} · available until {formatDate(data.expires_at)}
-        </span>
-      </header>
+    <div className="client-shell preview-shell">
       <Routes>
-        <Route index element={<PreviewOverview {...ctx} />} />
+        <Route
+          index
+          element={
+            first ? (
+              <Navigate to={`p/${first.id}`} replace />
+            ) : (
+              <main className="client-main">
+                <div className="empty-note">There’s nothing to preview yet.</div>
+              </main>
+            )
+          }
+        />
         <Route path="p/:screenId" element={<PreviewScreen {...ctx} />} />
       </Routes>
     </div>
@@ -124,41 +126,16 @@ function PreviewNameGate({ project, onSubmit }) {
         />
         {error && <div className="form-error">{error}</div>}
         <button className="btn btn-primary btn-lg" disabled={!value.trim() || busy}>
-          View the design →
+          {busy ? (
+            <>
+              <span className="spinner spinner-sm" /> Opening…
+            </>
+          ) : (
+            'View the design →'
+          )}
         </button>
       </form>
     </div>
-  );
-}
-
-function PreviewOverview({ data, name }) {
-  const { project, screens } = data;
-  return (
-    <main className="client-main">
-      <section className="hello">
-        <h1>Hi {name} 👋</h1>
-        <p className="muted">
-          Here’s a preview of {project.name}
-          {project.agency_name ? ` by ${project.agency_name}` : ''}. Open any page to look around; on interactive pages
-          you can try the menus, buttons and animations, and switch between desktop, tablet and mobile.
-        </p>
-      </section>
-      {screens.length === 0 && <div className="empty-note">There’s nothing to preview yet.</div>}
-      <ol className="checklist">
-        {screens.map((s, i) => (
-          <li key={s.id}>
-            <Link to={`p/${s.id}`} className="check-item">
-              <span className="check-circle">{i + 1}</span>
-              <span className="grow">
-                <strong>{s.title}</strong>
-                {s.note && <span className="muted small block">{s.note}</span>}
-              </span>
-              <span className="chev">→</span>
-            </Link>
-          </li>
-        ))}
-      </ol>
-    </main>
   );
 }
 
@@ -169,19 +146,23 @@ function PreviewScreen({ data, name, urls }) {
   const { project, screens } = data;
   const index = screens.findIndex((s) => s.id === Number(screenId));
   const screen = screens[index];
-  if (!screen) {
-    return (
-      <main className="client-main">
-        <div className="empty-note">
-          This page isn’t available. <Link to="..">Back to all pages</Link>
-        </div>
-      </main>
-    );
-  }
-  const prev = screens[index - 1];
-  const next = screens[index + 1];
+  const loading = usePageLoading(screen);
+  if (!screen) return <Navigate to=".." replace />;
+  const isHtml = screen.current_version?.kind === 'html';
+  // Interactive designs are navigated through their own menus; PDFs get simple previous/next arrows.
+  const prev = !isHtml && screens[index - 1];
+  const next = !isHtml && screens[index + 1];
   return (
     <div className="viewer-page client">
+      {loading && (
+        <div className="preview-loading" role="status" aria-live="polite">
+          <div className="spinner" />
+          <div>
+            <strong>Loading {screen.title}…</strong>
+            <div className="muted small">{project.agency_name ? `${project.agency_name} · ` : ''}{project.name}</div>
+          </div>
+        </div>
+      )}
       <ReviewViewer
         key={screen.id}
         project={project}
@@ -200,20 +181,18 @@ function PreviewScreen({ data, name, urls }) {
         onDelete={() => {}}
         toolbar={
           <>
-            <Link to=".." className="btn btn-sm btn-ghost">
-              ← All pages
-            </Link>
-            <strong className="toolbar-title">{screen.title}</strong>
-            <span className="muted small">
-              Page {index + 1} of {screens.length}
+            <span className="preview-brand">
+              <span className="muted small">{project.agency_name}</span>
+              <strong>{project.name}</strong>
             </span>
+            <span className="round-pill">Preview</span>
             {prev && (
-              <Link to={`../p/${prev.id}`} className="btn btn-sm btn-ghost hide-sm">
+              <Link to={`../p/${prev.id}`} className="btn btn-sm btn-ghost">
                 ‹ {prev.title}
               </Link>
             )}
             {next && (
-              <Link to={`../p/${next.id}`} className="btn btn-sm btn-ghost hide-sm">
+              <Link to={`../p/${next.id}`} className="btn btn-sm btn-ghost">
                 {next.title} ›
               </Link>
             )}
@@ -222,4 +201,31 @@ function PreviewScreen({ data, name, urls }) {
       />
     </div>
   );
+}
+
+/**
+ * True while the current page is loading: until the prototype reports it's ready (HTML), or briefly for PDFs.
+ * Starts again whenever the visitor moves to another page.
+ */
+function usePageLoading(screen) {
+  const [loading, setLoading] = useState(true);
+  const isHtml = screen?.current_version?.kind === 'html';
+  useEffect(() => {
+    if (!screen) return undefined;
+    setLoading(true);
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      setTimeout(() => setLoading(false), 350); // give images and fonts a moment to paint
+    };
+    const onMessage = (e) => e.data?.__portal && e.data.type === 'ready' && finish();
+    window.addEventListener('message', onMessage);
+    const fallback = setTimeout(finish, isHtml ? 15000 : 1200);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      clearTimeout(fallback);
+    };
+  }, [screen?.id, isHtml]); // eslint-disable-line react-hooks/exhaustive-deps
+  return loading;
 }

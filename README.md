@@ -22,7 +22,8 @@ approval and a "development has started" hand-off.
   (a summary, then typing DELETE), because the pages' comments are deleted too. The client link stays the same.
 - Copy the client link. The same link works for every round.
 - **Preview links for prospects** (on the project page): a comment-free link to the latest designs, valid 1–5 days.
-  Viewers only enter their name; you see who opened it and how often, and can turn a link off early. When it expires,
+  Viewers only enter their name, then land on the home page and browse it like the real website (through its own
+  menus, with a loading screen between pages). You see who opened it and how often, and can turn a link off early. When it expires,
   the link and the prototype pages behind it stop working.
 - See feedback live, mark comments **Done** or **Discussed**, and reply. Tick **📌 Important** on a reply when the
   client must see it. Each reply shows whether the client has read it ("Read by Kei · 2h ago").
