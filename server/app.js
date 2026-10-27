@@ -780,12 +780,18 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     const c = q.comment.get(Number(req.params.commentId), p.id) ?? fail(404, 'Comment not found');
     const status = req.body.status !== undefined ? String(req.body.status) : c.status;
     if (!['open', 'done', 'wontfix'].includes(status)) fail(400, 'Unknown status');
-    const reply = req.body.agency_reply !== undefined ? String(req.body.agency_reply).slice(0, 4000) : c.agency_reply;
+    const reply = req.body.agency_reply !== undefined ? String(req.body.agency_reply).trim().slice(0, 4000) : c.agency_reply;
+    const important = req.body.reply_important !== undefined ? (req.body.reply_important ? 1 : 0) : c.reply_important;
+    // A new or changed reply (or one newly marked important) counts as unread by the client again.
+    const fresh = reply !== c.agency_reply || (important && !c.reply_important);
     db.prepare(
-      `UPDATE comments SET status = ?, agency_reply = ?,
-         status_changed_at = CASE WHEN status = ? THEN status_changed_at ELSE datetime('now') END
+      `UPDATE comments SET status = ?, agency_reply = ?, reply_important = ?,
+         status_changed_at = CASE WHEN status = ? THEN status_changed_at ELSE datetime('now') END,
+         replied_at = CASE WHEN ? THEN datetime('now') ELSE replied_at END,
+         reply_seen_at = CASE WHEN ? THEN NULL ELSE reply_seen_at END,
+         reply_seen_by = CASE WHEN ? THEN NULL ELSE reply_seen_by END
        WHERE id = ?`,
-    ).run(status, reply, status, c.id);
+    ).run(status, reply, reply ? important : 0, status, fresh ? 1 : 0, fresh ? 1 : 0, fresh ? 1 : 0, c.id);
   }
 
   app.patch('/api/projects/:projectId/comments/:commentId', requireUser, (req, res) => {
@@ -943,6 +949,19 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       cleanup();
       throw err;
     }
+    res.json(projectBundle(q.project.get(p.id), { forClient: true }));
+  });
+
+  /** The client confirms they've read the team's replies ("Got it"). */
+  app.post('/api/share/:token/replies/seen', (req, res) => {
+    const p = sharedProject(req);
+    const author = cleanName(req.body.author_name) || fail(400, 'Please enter your name first');
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger).slice(0, 500);
+    const mark = db.prepare(
+      `UPDATE comments SET reply_seen_at = datetime('now'), reply_seen_by = ?
+       WHERE id = ? AND project_id = ? AND agency_reply != '' AND reply_seen_at IS NULL`,
+    );
+    tx(db, () => ids.forEach((id) => mark.run(author, id, p.id)));
     res.json(projectBundle(q.project.get(p.id), { forClient: true }));
   });
 

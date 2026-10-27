@@ -23,9 +23,11 @@ export default function CommentCard({
   compact,
   pending,
   hiddenHere,
+  onSeenReply,
 }) {
   const kind = KINDS[comment.kind] ?? KINDS.change;
   const [reply, setReply] = useState(comment.agency_reply);
+  const [important, setImportant] = useState(!!comment.reply_important);
   const [editingReply, setEditingReply] = useState(false);
   const status = STATUS[comment.status];
   const actionable = isActionable(comment);
@@ -76,8 +78,24 @@ export default function CommentCard({
         )}
       </div>
       {comment.agency_reply && !editingReply && (
-        <div className="agency-reply">
+        <div className={`agency-reply ${comment.reply_important ? 'important' : ''}`}>
+          {comment.reply_important ? <span className="reply-tag important">📌 Important</span> : null}
+          {mode === 'client' && !comment.reply_seen_at && <span className="reply-tag new">New</span>}
           <strong>Studio reply:</strong> {comment.agency_reply}
+          {mode === 'client' && !comment.reply_seen_at && onSeenReply && (
+            <div>
+              <button className="link-btn" onClick={() => onSeenReply(comment)}>
+                ✓ Got it
+              </button>
+            </div>
+          )}
+          {mode === 'agency' && (
+            <div className="reply-seen muted small">
+              {comment.reply_seen_at
+                ? `👀 Read by ${comment.reply_seen_by} · ${timeAgo(comment.reply_seen_at)}`
+                : 'Not read by the client yet'}
+            </div>
+          )}
         </div>
       )}
       {mode === 'client' && canDelete && (
@@ -96,10 +114,21 @@ export default function CommentCard({
               className="reply-form"
               onSubmit={(e) => {
                 e.preventDefault();
-                onUpdate(comment, { agency_reply: reply.trim() }).then(() => setEditingReply(false));
+                onUpdate(comment, { agency_reply: reply.trim(), reply_important: important }).then(() =>
+                  setEditingReply(false),
+                );
               }}
             >
-              <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={2} />
+              <textarea
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                rows={2}
+                placeholder="The client sees this under their comment"
+              />
+              <label className="toggle">
+                <input type="checkbox" checked={important} onChange={(e) => setImportant(e.target.checked)} />
+                <span>📌 Important: the client must confirm they’ve read it</span>
+              </label>
               <button className="btn btn-sm btn-primary">Save reply</button>
             </form>
           )}
@@ -129,15 +158,21 @@ export default function CommentCard({
               className="reply-form"
               onSubmit={(e) => {
                 e.preventDefault();
-                onUpdate(comment, { agency_reply: reply.trim() }).then(() => setEditingReply(false));
+                onUpdate(comment, { agency_reply: reply.trim(), reply_important: important }).then(() =>
+                  setEditingReply(false),
+                );
               }}
             >
               <textarea
                 value={reply}
                 onChange={(e) => setReply(e.target.value)}
                 rows={2}
-                placeholder="Visible to the client in the next round"
+                placeholder="The client sees this under their comment"
               />
+              <label className="toggle">
+                <input type="checkbox" checked={important} onChange={(e) => setImportant(e.target.checked)} />
+                <span>📌 Important: the client must confirm they’ve read it</span>
+              </label>
               <button className="btn btn-sm btn-primary">Save reply</button>
             </form>
           )}

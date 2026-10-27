@@ -20,6 +20,7 @@ export default function ClientPortal() {
   const [submitOpen, setSubmitOpen] = useState(null); // null | 'manual' | 'idle'
   const [celebration, setCelebration] = useState(null);
   const [welcomeReplay, setWelcomeReplay] = useState(0); // bumps when the reviewer asks for the welcome guide again
+  const [welcomeClosed, setWelcomeClosed] = useState(0); // bumps when the welcome guide closes
 
   const load = useCallback(
     () =>
@@ -80,6 +81,13 @@ export default function ClientPortal() {
     );
   }
 
+  // Team replies the client hasn't confirmed reading; "important" ones must be read before carrying on.
+  const unreadReplies = data.comments.filter((c) => c.agency_reply && !c.reply_seen_at);
+  const importantUnread = unreadReplies.filter((c) => c.reply_important);
+  const welcomeKey = `review-tour:${token}:${project.current_round}`;
+  const welcomeShowing =
+    project.stage === 'review' && (!storage.get(welcomeKey) || welcomeReplay > welcomeClosed) && data.screens.length > 0;
+
   const ctx = {
     token,
     data,
@@ -88,6 +96,8 @@ export default function ClientPortal() {
     urls: fileUrls({ token }),
     openSubmit: () => setSubmitOpen('manual'),
     replayWelcome: () => setWelcomeReplay((n) => n + 1),
+    markRepliesSeen: (ids) => call('POST', '/replies/seen', { author_name: name, ids }),
+    importantPending: importantUnread.length > 0,
   };
 
   return (
@@ -109,7 +119,15 @@ export default function ClientPortal() {
         <Route path="p/:screenId" element={<ClientScreen {...ctx} />} />
       </Routes>
       {project.stage === 'review' && (
-        <TourModal key={`${project.current_round}-${welcomeReplay}`} force={welcomeReplay > 0} {...ctx} />
+        <TourModal
+          key={`${project.current_round}-${welcomeReplay}`}
+          force={welcomeReplay > 0}
+          onClosed={() => setWelcomeClosed(welcomeReplay)}
+          {...ctx}
+        />
+      )}
+      {importantUnread.length > 0 && !welcomeShowing && !submitOpen && (
+        <ImportantRepliesModal {...ctx} replies={importantUnread} />
       )}
       {submitOpen && project.stage === 'review' && (
         <SubmitModal
@@ -280,7 +298,7 @@ function screenStatus(data, screen, name) {
   return { reviewed, count };
 }
 
-function Overview({ data, name, urls, openSubmit, replayWelcome }) {
+function Overview({ data, name, urls, openSubmit, replayWelcome, markRepliesSeen }) {
   const { project, screens } = data;
   const navigate = useNavigate();
 
@@ -332,6 +350,8 @@ function Overview({ data, name, urls, openSubmit, replayWelcome }) {
         </section>
       )}
 
+      <TeamReplies data={data} markRepliesSeen={markRepliesSeen} />
+
       <div className="overview-grid">
         <section>
           <div className="section-head">
@@ -357,6 +377,11 @@ function Overview({ data, name, urls, openSubmit, replayWelcome }) {
                     <strong>{screen.title}</strong>
                     {screen.note && <span className="muted small block">{screen.note}</span>}
                   </span>
+                  {newReplies(data, screen.id) > 0 && (
+                    <span className="badge badge-blue">
+                      💬 {newReplies(data, screen.id)} new {newReplies(data, screen.id) === 1 ? 'reply' : 'replies'}
+                    </span>
+                  )}
                   {reviewing && count > 0 && <span className="badge badge-grey">{plural(count, 'comment')}</span>}
                   <span className="chev">→</span>
                 </Link>
@@ -386,6 +411,136 @@ function Overview({ data, name, urls, openSubmit, replayWelcome }) {
       <FeedbackLog data={data} urls={urls} />
       {reviewing && <HelpButton onClick={replayWelcome} label="Show the guide again" />}
     </main>
+  );
+}
+
+const newReplies = (data, screenId) =>
+  data.comments.filter((c) => c.screen_id === screenId && c.agency_reply && !c.reply_seen_at).length;
+
+const short = (t, n = 140) => (t && t.length > n ? `${t.slice(0, n - 1).trim()}…` : t);
+
+/** One team reply with the comment it answers, for the overview panel and the must-read popup. */
+function ReplyItem({ data, c, onOpen, onSeen }) {
+  const screen = data.screens.find((s) => s.id === c.screen_id);
+  const kind = KINDS[c.kind] ?? KINDS.change;
+  return (
+    <li className={`reply-item ${c.reply_seen_at ? 'seen' : ''} ${c.reply_important ? 'important' : ''}`}>
+      <div className="reply-item-head">
+        <strong>{screen?.title ?? 'Page'}</strong>
+        <span className="muted small"> · round {c.round}</span>
+        {c.reply_important ? <span className="reply-tag important">📌 Important</span> : null}
+        {!c.reply_seen_at && <span className="reply-tag new">New</span>}
+      </div>
+      <div className="reply-you muted small">
+        You said: {kind.emoji} {short(c.body) || kind.label}
+      </div>
+      <div className="reply-text">
+        <strong>Team reply:</strong> {c.agency_reply}
+      </div>
+      <div className="row">
+        {screen && (
+          <button className="link-btn" onClick={() => onOpen(c)}>
+            See it on the page →
+          </button>
+        )}
+        {!c.reply_seen_at && onSeen && (
+          <button className="btn btn-sm" onClick={() => onSeen([c.id])}>
+            ✓ Got it
+          </button>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** "Replies from the team": every reply to the client's comments, unread first, so none get missed. */
+function TeamReplies({ data, markRepliesSeen }) {
+  const navigate = useNavigate();
+  const [showAll, setShowAll] = useState(false);
+  const replies = data.comments
+    .filter((c) => c.agency_reply)
+    .sort(
+      (a, b) =>
+        !!a.reply_seen_at - !!b.reply_seen_at ||
+        b.reply_important - a.reply_important ||
+        String(b.replied_at ?? '').localeCompare(String(a.replied_at ?? '')) ||
+        b.id - a.id,
+    );
+  if (!replies.length) return null;
+  const unread = replies.filter((c) => !c.reply_seen_at);
+  const shown = showAll ? replies : replies.slice(0, Math.max(3, unread.length));
+  return (
+    <section className="team-replies">
+      <div className="section-head">
+        <h2>
+          💬 Replies from the team{' '}
+          {unread.length > 0 && <span className="badge badge-blue">{unread.length} new</span>}
+        </h2>
+        {unread.length > 1 && (
+          <button className="link-btn" onClick={() => markRepliesSeen(unread.map((c) => c.id))}>
+            Mark all as read
+          </button>
+        )}
+      </div>
+      <p className="muted small">
+        The team answered some of your comments. Please read them, especially the 📌 important ones.
+      </p>
+      <ul className="reply-list">
+        {shown.map((c) => (
+          <ReplyItem
+            key={c.id}
+            data={data}
+            c={c}
+            onSeen={markRepliesSeen}
+            onOpen={(cm) => navigate(`p/${cm.screen_id}`, { state: { focus: { id: cm.id } } })}
+          />
+        ))}
+      </ul>
+      {replies.length > shown.length && (
+        <button className="link-btn" onClick={() => setShowAll(true)}>
+          Show all {replies.length} replies
+        </button>
+      )}
+    </section>
+  );
+}
+
+/** Replies the team marked important pop up until the client confirms they've read them. */
+function ImportantRepliesModal({ data, token, replies, markRepliesSeen }) {
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal className="important-replies">
+      <div className="big-emoji">📌</div>
+      <h2>Please read: the team replied to {replies.length === 1 ? 'your comment' : `${replies.length} of your comments`}</h2>
+      <p className="muted">These are important for your review, so we want to make sure you see them.</p>
+      <ul className="reply-list">
+        {replies.map((c) => (
+          <ReplyItem
+            key={c.id}
+            data={data}
+            c={c}
+            onOpen={async (cm) => {
+              // Opening it on the page counts as reading it; the popup would otherwise cover the page.
+              await markRepliesSeen([cm.id]);
+              navigate(`/r/${token}/p/${cm.screen_id}`, { state: { focus: { id: cm.id } } });
+            }}
+          />
+        ))}
+      </ul>
+      <div className="row-end">
+        <button
+          className="btn btn-primary"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            await markRepliesSeen(replies.map((c) => c.id)).finally(() => setBusy(false));
+          }}
+        >
+          ✓ I’ve read {replies.length === 1 ? 'this' : 'these'}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -560,7 +715,7 @@ function FeedbackLog({ data, urls }) {
   );
 }
 
-function ClientScreen({ data, name, call, urls, token, openSubmit }) {
+function ClientScreen({ data, name, call, urls, token, openSubmit, markRepliesSeen, importantPending }) {
   const { screenId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -574,11 +729,13 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
   const tourKey = `review-tour-steps:${token}:${isHtml ? 'html' : 'pdf'}${round > 1 ? `:r${round}` : ''}`;
   const [touring, setTouring] = useState(null); // null, 'required' (first time) or 'replay'
   useEffect(() => {
-    if (project.stage === 'review' && screen && !storage.get(tourKey)) {
+    if (project.stage === 'review' && screen && !storage.get(tourKey) && !importantPending) {
       const t = setTimeout(() => setTouring('required'), 700); // let the design and controls render first
       return () => clearTimeout(t);
     }
-  }, [tourKey, project.stage, screen]);
+  }, [tourKey, project.stage, screen, importantPending]);
+  const [focus, setFocus] = useState(location.state?.focus ?? null);
+  useEffect(() => setFocus(location.state?.focus ?? null), [location.state]);
   const endTour = () => {
     storage.set(tourKey, '1');
     setTouring(null);
@@ -645,6 +802,8 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
         canComment={reviewing}
         onCreate={createComment}
         onDelete={(c) => call('DELETE', `/comments/${c.id}`, { author_name: name })}
+        onSeenReply={(c) => markRepliesSeen([c.id])}
+        focus={focus}
         toolbar={
           <>
             <Link to=".." className="btn btn-sm btn-ghost">
@@ -657,7 +816,12 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
 
           </>
         }
-        sidebarTop={reviewing ? <FocusCard project={project} note={screen.note} compact={index > 0} /> : null}
+        sidebarTop={
+          <>
+            <PageReplies data={data} screen={screen} onShow={(c) => setFocus({ id: c.id, n: Date.now() })} />
+            {reviewing ? <FocusCard project={project} note={screen.note} compact={index > 0} /> : null}
+          </>
+        }
         footer={
           reviewing ? (
             <div className="sidebar-footer" data-tour="done">
@@ -683,6 +847,23 @@ function ClientScreen({ data, name, call, urls, token, openSubmit }) {
           ) : null
         }
       />
+    </div>
+  );
+}
+
+/** "The team replied to 2 of your comments on this page", with a button that opens the first new one. */
+function PageReplies({ data, screen, onShow }) {
+  const replies = data.comments.filter((c) => c.screen_id === screen.id && c.agency_reply);
+  if (!replies.length) return null;
+  const unread = replies.filter((c) => !c.reply_seen_at);
+  const first = unread[0] ?? replies[0];
+  return (
+    <div className={`page-replies ${unread.length ? 'has-new' : ''}`}>
+      💬 The team replied to {plural(replies.length, 'comment')} on this page
+      {unread.length > 0 && <strong> ({unread.length} new)</strong>}.{' '}
+      <button className="link-btn" onClick={() => onShow(first)}>
+        Show me
+      </button>
     </div>
   );
 }
@@ -850,7 +1031,7 @@ function reviewSteps({ isHtml, project, nextScreen, data, screen }) {
   ].filter(Boolean);
 }
 
-function TourModal({ data, name, token, force }) {
+function TourModal({ data, name, token, force, onClosed }) {
   const { project, screens } = data;
   const key = `review-tour:${token}:${project.current_round}`;
   const [step, setStep] = useState(() => (force || !storage.get(key) ? 0 : -1));
@@ -861,6 +1042,7 @@ function TourModal({ data, name, token, force }) {
   const close = () => {
     storage.set(key, '1');
     setStep(-1);
+    onClosed?.();
   };
   const returning = project.current_round > 1;
 

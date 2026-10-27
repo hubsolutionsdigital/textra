@@ -732,3 +732,35 @@ test('upload problems explain themselves instead of a bare "Something went wrong
   const health = await api('GET', '/api/health');
   assert.ok(health.data.storage.free_gb >= 0, 'health reports free storage');
 });
+
+test('team replies: important flag, client confirms reading, a changed reply is unread again', async () => {
+  await api('POST', '/api/auth/register', { email: 'replies@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Replies', notify_emails: 'pm@studio.test' });
+  const { id: projectId, share_token: shareToken } = r.data.project;
+  const fd = new FormData();
+  fd.append('title', 'Home');
+  fd.append('file', pdfBlob(), 'home.pdf');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'Kei' }, { agency: false });
+  r = await api('POST', `/api/share/${shareToken}/comments`, { author_name: 'Kei', screen_id: r.data.screens[0].id, kind: 'question', body: 'Static or toggle?', x: 0.5, y: 0.5 }, { agency: false });
+  const id = r.data.comments[0].id;
+
+  r = await api('PATCH', `/api/projects/${projectId}/comments/${id}`, { status: 'wontfix', agency_reply: 'It is a key, not tabs.', reply_important: true });
+  let c = r.data.comments[0];
+  assert.equal(c.reply_important, 1);
+  assert.ok(c.replied_at);
+  assert.equal(c.reply_seen_at, null);
+
+  r = await api('POST', `/api/share/${shareToken}/replies/seen`, { author_name: 'Kei', ids: [id] }, { agency: false });
+  c = r.data.comments[0];
+  assert.ok(c.reply_seen_at, 'client confirmed reading');
+  assert.equal(c.reply_seen_by, 'Kei');
+  assert.equal(r.data.project.team_token, undefined, 'still the client view');
+
+  r = await api('PATCH', `/api/projects/${projectId}/comments/${id}`, { status: 'done' });
+  assert.ok(r.data.comments[0].reply_seen_at, 'a status change alone keeps it read');
+  r = await api('PATCH', `/api/projects/${projectId}/comments/${id}`, { agency_reply: 'Updated: the other cards now link to their sections.' });
+  assert.equal(r.data.comments[0].reply_seen_at, null, 'a changed reply is new again');
+  r = await api('PATCH', `/api/projects/${projectId}/comments/${id}`, { agency_reply: '' });
+  assert.equal(r.data.comments[0].reply_important, 0, 'no reply, nothing important');
+});

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PdfDocument from './PdfDocument.jsx';
 import HtmlStage, { DEVICES } from './HtmlStage.jsx';
 import Composer from './Composer.jsx';
@@ -28,6 +28,8 @@ export default function ReviewViewer({
   screens = [],
   onOpenScreen,
   view,
+  onSeenReply,
+  focus, // { id } of a comment to open, e.g. a team reply the client chose to see
 }) {
   const [zoom, setZoom] = useState(1);
   const [showPast, setShowPast] = useState(true);
@@ -104,6 +106,19 @@ export default function ReviewViewer({
     );
   };
 
+  // Open a comment asked for from outside (e.g. "See it on the page" next to a team reply).
+  useEffect(() => {
+    const c = focus && comments.find((cm) => cm.id === focus.id && cm.screen_id === screen.id);
+    if (!c) return;
+    setTab(c.round === liveRound ? 'current' : 'past');
+    const t = setTimeout(() => {
+      focusComment(c);
+      document.getElementById(`card-${c.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, isHtml ? 1200 : 300); // let the design load first
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
+
   const onPageClick = canComment
     ? ({ pageNumber, x, y }) => {
         setActiveId(null);
@@ -125,6 +140,7 @@ export default function ReviewViewer({
       setActiveId(null);
     },
     onUpdate,
+    onSeenReply,
   });
 
   const renderOverlay = (pageNumber) => {
@@ -400,6 +416,7 @@ export default function ReviewViewer({
                   <div className="round-divider">Round {c.round}</div>
                 )}
                 <div
+                  id={`card-${c.id}`}
                   className={`comment-list-item ${activeId === c.id ? 'active' : ''}`}
                   onClick={() => focusComment(c)}
                 >

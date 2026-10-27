@@ -21,7 +21,8 @@ approval and a "development has started" hand-off.
 - Wrong upload? **Select pages** to delete several at once, or **Delete all pages** to start over. Both ask twice
   (a summary, then typing DELETE), because the pages' comments are deleted too. The client link stays the same.
 - Copy the client link. The same link works for every round.
-- See feedback live, mark comments **Done** or **Discussed**, and reply. Replies show to the client in the next round.
+- See feedback live, mark comments **Done** or **Discussed**, and reply. Tick **📌 Important** on a reply when the
+  client must see it. Each reply shows whether the client has read it ("Read by Kei · 2h ago").
 - **Export feedback** from the Feedback tab as one document, page by page (Page 1: Home, Page 2: …): a **Word**
   file (.docx) or a print-ready page you can **Save as PDF**. Comments are numbered like their pins and include the
   type, status, who/when, screen size, the client's screenshots and your replies, plus **where** each comment is, in
@@ -54,6 +55,9 @@ approval and a "development has started" hand-off.
   Screenshots can be pasted with Ctrl/⌘+V or attached.
 - **Submit round** stays greyed out (showing e.g. "1/3 pages") until the reviewer has clicked **Done with this page** on every page. The server enforces this too.
 - After 10 minutes of review time with unsent comments, the portal asks whether they'd like to submit this batch.
+- **Replies from the team** on the overview lists every reply to their comments, new ones first, with
+  **See it on the page** and **Got it**. Pages with new replies get a badge, and each page says "The team replied
+  to 2 comments on this page · Show me". Replies marked important pop up until the client clicks **I've read this**.
 - Submitting locks the round with a confetti celebration. When the next round opens, the client uses the same link.
   Earlier comments show as faint dots on the design, and hovering one reveals what was said, plus the agency's status and reply.
   While the team works, the client sees live progress ("2 of 3 done") and each change request marked

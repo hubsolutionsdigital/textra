@@ -2122,3 +2122,95 @@ label {
 .stack-sm > .share-row {
   flex: none; /* its 380px basis is meant as a width in the share box, not a height here */
 }
+
+.agency-reply.important {
+  background: #fff4e5;
+  border: 1px solid #f5c58a;
+}
+.reply-tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0 7px;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+.reply-tag.new {
+  background: var(--primary);
+  color: #fff;
+}
+.reply-tag.important {
+  background: #fde3c2;
+  color: #93370d;
+}
+.reply-seen {
+  margin-top: 4px;
+}
+.team-replies {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+  margin-bottom: 24px;
+}
+.team-replies h2 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+.reply-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.reply-item {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  text-align: left;
+}
+.reply-item.important {
+  border-left-color: #e8892b;
+  background: #fffaf3;
+}
+.reply-item.seen {
+  border-left-color: var(--border);
+  opacity: 0.85;
+}
+.reply-item-head {
+  margin-bottom: 2px;
+}
+.reply-item-head .reply-tag {
+  margin-left: 6px;
+}
+.reply-text {
+  margin: 4px 0 6px;
+}
+.important-replies .reply-list {
+  max-height: 50vh;
+  overflow: auto;
+}
+.page-replies {
+  font-size: 0.88rem;
+  background: var(--primary-soft);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+}
+.page-replies.has-new {
+  border: 1px solid var(--primary);
+}
+.reply-form .toggle {
+  white-space: normal;
+  align-items: flex-start;
+  font-size: 0.8rem;
+}
+.reply-form .toggle input {
+  margin-top: 2px;
+}

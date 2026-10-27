@@ -159,6 +159,11 @@ function migrate(db) {
   if (!has('comments', 'status_changed_at')) {
     db.exec(`ALTER TABLE comments ADD COLUMN status_changed_at TEXT`);
   }
+  // Team replies: when written, whether the client must read it, and when the client confirmed reading it.
+  if (!has('comments', 'replied_at')) db.exec('ALTER TABLE comments ADD COLUMN replied_at TEXT');
+  if (!has('comments', 'reply_important')) db.exec('ALTER TABLE comments ADD COLUMN reply_important INTEGER NOT NULL DEFAULT 0');
+  if (!has('comments', 'reply_seen_at')) db.exec('ALTER TABLE comments ADD COLUMN reply_seen_at TEXT');
+  if (!has('comments', 'reply_seen_by')) db.exec('ALTER TABLE comments ADD COLUMN reply_seen_by TEXT');
 }
 
 /** Run fn inside a transaction. */
