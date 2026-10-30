@@ -872,3 +872,22 @@ test('prospect preview links: no comments, name collected, expire within 5 days 
   assert.equal(r.status, 410);
   assert.match(r.data.error, /expired/);
 });
+
+test('the upload’s own scripts load in CORS mode so their errors are readable; other sites’ scripts are untouched', async () => {
+  await api('POST', '/api/auth/register', { email: 'cors@studio.test', name: 'Studio', password: 'password1' });
+  const r0 = await api('POST', '/api/projects', { name: 'Cors', notify_emails: 'pm@studio.test' });
+  const fd = new FormData();
+  fd.append('title', 'Home');
+  fd.append(
+    'file',
+    new Blob(['<html><head><script src="assets/app.js"></script><script src="/js/root.js"></script><script src="https://spd.org.sg/x.js"></script><script type="module" src="m.js" crossorigin="use-credentials"></script></head><body></body></html>'], { type: 'text/html' }),
+    'index.html',
+  );
+  const r = await api('POST', `/api/projects/${r0.data.project.id}/screens`, fd);
+  const res = await fetch(`${base}/sites/${r.data.screens[0].current_version.site_token}/index.html`);
+  const html = await res.text();
+  assert.match(html, /<script crossorigin="anonymous" src="assets\/app\.js">/);
+  assert.match(html, /<script crossorigin="anonymous" src="\/sites\/[^"]+\/js\/root\.js">/);
+  assert.match(html, /<script src="https:\/\/spd\.org\.sg\/x\.js">/, 'external script left alone');
+  assert.match(html, /<script type="module" src="m\.js" crossorigin="use-credentials">/, 'existing crossorigin kept');
+});

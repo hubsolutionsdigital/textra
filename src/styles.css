@@ -2356,3 +2356,7 @@ label {
     transform: rotate(360deg);
   }
 }
+.page-error.external {
+  background: var(--primary-soft);
+  border-color: var(--border);
+}

@@ -406,7 +406,14 @@
 
   // Tell the portal about script errors so the agency can see why a prototype misbehaves.
   window.addEventListener('error', function (e) {
-    send({ type: 'page-error', message: String(e.message || 'Script error').slice(0, 300), source: String(e.filename || '').split('/').pop() });
+    // A bare "Script error." with no file is the browser hiding an error from a script on another website.
+    var external = !e.filename && /^Script error\.?$/i.test(String(e.message || '').trim());
+    send({
+      type: 'page-error',
+      message: String(e.message || 'Script error').slice(0, 300),
+      source: String(e.filename || '').split('/').pop(),
+      external: external,
+    });
   });
 
   function ready() {

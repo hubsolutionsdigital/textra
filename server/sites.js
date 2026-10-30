@@ -264,6 +264,20 @@ function usesCustomCursor(dir) {
 }
 
 /** Adds the commenting helper to a page, as early as possible so it sees every click. */
+/**
+ * Pages run with an opaque origin, so every script counts as "another website" and the browser reduces its
+ * errors to a bare "Script error.". Loading the upload's own scripts in CORS mode (they're served with
+ * Access-Control-Allow-Origin) lets the real message and file name through. Scripts from other sites keep
+ * their default loading, since those servers may not allow it.
+ */
+function corsOwnScripts(html) {
+  return html.replace(/<script\b[^>]*>/gi, (tag) => {
+    const src = /\ssrc\s*=\s*["']([^"']*)["']/i.exec(tag)?.[1];
+    if (!src || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(src) || /\scrossorigin\b/i.test(tag)) return tag;
+    return tag.replace(/^<script\b/i, '<script crossorigin="anonymous"');
+  });
+}
+
 function injectHelper(html, { customCursor = false } = {}) {
   const tag = `<script src="/__portal/frame.js"${customCursor ? ' data-custom-cursor="1"' : ''}></script>`;
   if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => `${m}${tag}`);
@@ -322,7 +336,7 @@ h1{font-size:20px;margin:0 0 6px}p{margin:0;color:#5b6b80}</style></head>
 
   if (ext === '.html' || ext === '.htm') {
     return res.send(
-      injectHelper(adapt(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base)), { customCursor: usesCustomCursor(ownDir) || (assetBase ? usesCustomCursor(path.join(UPLOAD_DIR, assetBase)) : false) }),
+      injectHelper(adapt(corsOwnScripts(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base))), { customCursor: usesCustomCursor(ownDir) || (assetBase ? usesCustomCursor(path.join(UPLOAD_DIR, assetBase)) : false) }),
     );
   }
   if (ext === '.css') return res.send(adapt(rewriteRootUrls(fs.readFileSync(target, 'utf8'), base)));

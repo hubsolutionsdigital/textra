@@ -345,9 +345,20 @@ export default function ReviewViewer({
       <div className="viewer-body">
         <div className={`canvas-scroll ${canComment ? 'can-comment' : ''} ${isHtml ? 'is-html' : ''}`} data-tour="canvas">
           {isHtml && pageError && mode === 'agency' && (
-            <div className="page-error" role="status">
-              ⚠️ This prototype hit a script error in the portal: <code>{pageError.message}</code>
-              {pageError.source && <> ({pageError.source})</>}. Some animations may not run as designed.
+            <div className={`page-error ${pageError.external ? 'external' : ''}`} role="status">
+              {pageError.external ? (
+                <>
+                  ℹ️ A script this design loads from another website (for example a WordPress plugin, analytics or a
+                  cookie banner) reported an error. Browsers hide the details of other websites’ errors, so the
+                  portal can’t say which one. It usually doesn’t change how the design looks; if something doesn’t
+                  move as it should, compare it with the live site.
+                </>
+              ) : (
+                <>
+                  ⚠️ This prototype hit a script error in the portal: <code>{pageError.message.replace(/\.$/, '')}</code>
+                  {pageError.source && <> ({pageError.source})</>}. Some animations may not run as designed.
+                </>
+              )}{' '}
               <button className="link-btn" onClick={() => setPageError(null)}>
                 Dismiss
               </button>
@@ -390,7 +401,7 @@ export default function ReviewViewer({
               }}
               onHiddenChange={setHiddenIds}
               onDismiss={() => setActiveId(null)}
-              onPageError={(err) => setPageError((cur) => cur ?? err)}
+              onPageError={(err) => setPageError((cur) => (cur && (!cur.external || err.external) ? cur : err))}
               onPageChange={handlePageChange}
               renderPopover={renderHtmlPopover}
             />
