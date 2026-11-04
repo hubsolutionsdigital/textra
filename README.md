@@ -39,6 +39,9 @@ approval and a "development has started" hand-off.
   card) locks the round for them so you can upload the next round. **Settings → Round** sets the project to any
   round, with the client reviewing or the team revising, if it ever gets out of step. Comments and files are kept.
 - When the client submits a round, upload updated PDFs, then click **Open round N+1**. After the last round, upload the finals and click **Send final for approval**.
+- After approval you can still upload changes the client asks for later (drop zone or **Upload new version**, after
+  a confirmation). They're saved as **After approval** versions for the record, earlier versions are kept, and the
+  approval stays. Approved pages can't be deleted; the client sees an "Updated after approval" badge.
 - Add the live-site URL once it's up, and the client sees a **View your live site** button.
 - The activity log records every step (who joined, submissions, uploads, approvals).
 

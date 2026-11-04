@@ -1329,6 +1329,9 @@ function ApprovedView({ project, data, urls }) {
               <Link to={`p/${s.id}`} className="check-item reviewed">
                 <span className="check-circle">✓</span>
                 <strong className="grow">{s.title}</strong>
+                {s.current_version?.after_approval ? (
+                  <span className="badge badge-blue">Updated after approval</span>
+                ) : null}
                 <span className="chev">→</span>
               </Link>
             </li>

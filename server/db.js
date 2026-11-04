@@ -187,6 +187,8 @@ function migrate(db) {
   if (!has('comments', 'client_reply_at')) db.exec('ALTER TABLE comments ADD COLUMN client_reply_at TEXT');
   if (!has('comments', 'client_reply_by')) db.exec('ALTER TABLE comments ADD COLUMN client_reply_by TEXT');
   if (!has('comments', 'client_reply_seen_at')) db.exec('ALTER TABLE comments ADD COLUMN client_reply_seen_at TEXT');
+  // Uploaded after the client approved (e.g. a change they asked for later), kept for the record.
+  if (!has('versions', 'after_approval')) db.exec('ALTER TABLE versions ADD COLUMN after_approval INTEGER NOT NULL DEFAULT 0');
 }
 
 /** Run fn inside a transaction. */

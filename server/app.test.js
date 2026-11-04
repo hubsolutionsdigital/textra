@@ -891,3 +891,52 @@ test('the upload’s own scripts load in CORS mode so their errors are readable;
   assert.match(html, /<script src="https:\/\/spd\.org\.sg\/x\.js">/, 'external script left alone');
   assert.match(html, /<script type="module" src="m\.js" crossorigin="use-credentials">/, 'existing crossorigin kept');
 });
+
+test('after approval the team can still upload changes: kept as after-approval versions, approval stays', async () => {
+  const { zipSync, strToU8 } = await import('fflate');
+  await api('POST', '/api/auth/register', { email: 'late@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Late change', notify_emails: 'pm@studio.test', max_rounds: 1 });
+  const { id: projectId, share_token: shareToken } = r.data.project;
+  const site = (v) => zipSync({ 's/index.html': strToU8(`<html>home ${v}<a href="about.html">About</a></html>`), 's/about.html': strToU8(`<html>about ${v}</html>`) });
+  const drop = (zip, url = `/api/projects/${projectId}/screens`) => {
+    const fd = new FormData();
+    fd.append('file', new Blob([zip], { type: 'application/zip' }), 'site.zip');
+    return api('POST', url, fd);
+  };
+  r = await drop(site('v1'));
+  const [home, about] = r.data.screens;
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'Jane' }, { agency: false });
+  for (const s of r.data.screens) await api('POST', `/api/share/${shareToken}/screens/${s.id}/reviewed`, { author_name: 'Jane' }, { agency: false });
+  await api('POST', `/api/share/${shareToken}/submit`, { author_name: 'Jane' }, { agency: false });
+  await drop(site('final'));
+  await api('POST', `/api/projects/${projectId}/advance`, { action: 'send_final' });
+  r = await api('POST', `/api/share/${shareToken}/approve`, { author_name: 'Jane' }, { agency: false });
+  assert.equal(r.data.project.stage, 'approved');
+
+  // the client asks for one more change: drop the new zip, it updates the same pages
+  r = await drop(site('late'));
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.project.stage, 'approved', 'approval stays');
+  assert.equal(r.data.screens.length, 2, 'no duplicate pages');
+  assert.deepEqual(r.data.screens.map((s) => s.current_version.after_approval), [1, 1]);
+  assert.deepEqual(r.data.screens.map((s) => s.versions.length), [3, 3], 'earlier versions kept for the record');
+  assert.match(r.data.upload_note, /New after-approval update from site\.zip: updated Home, About/);
+  const page = await fetch(`${base}/sites/${r.data.screens[0].current_version.site_token}/index.html`);
+  assert.match(await page.text(), /home late/);
+  r = await api('GET', `/api/share/${shareToken}`, undefined, { agency: false });
+  assert.equal(r.data.screens[0].current_version.after_approval, 1, 'client sees the update');
+
+  // approved pages stay; a page added after approval can be removed again
+  r = await api('DELETE', `/api/projects/${projectId}/screens/${home.id}`);
+  assert.equal(r.status, 409);
+  const fd = new FormData();
+  fd.append('title', 'Oops');
+  fd.append('file', pdfBlob(), 'oops.pdf');
+  r = await api('POST', `/api/projects/${projectId}/screens`, fd);
+  const oops = r.data.screens.at(-1);
+  assert.equal(oops.current_version.after_approval, 1);
+  r = await api('DELETE', `/api/projects/${projectId}/screens/${oops.id}`);
+  assert.equal(r.status, 200);
+  assert.equal(r.data.screens.length, 2);
+  assert.ok(about);
+});

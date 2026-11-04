@@ -476,6 +476,15 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   const uploadRound = (p) =>
     p.stage === 'review' ? p.current_round : p.stage === 'revising' ? p.current_round + 1 : p.max_rounds + 1;
 
+  /** Uploads after the client approved stay allowed (late changes, for the record) and are marked as such. */
+  const afterApproval = (p) => (p.stage === 'approved' ? 1 : 0);
+  /** "final version", "round 2 version" or "after-approval update", for upload notes and the activity log. */
+  const uploadLabel = (p) => {
+    if (p.stage === 'approved') return 'after-approval update';
+    const round = Math.min(uploadRound(p), p.max_rounds + 1);
+    return round > p.max_rounds ? 'final version' : `round ${round} version`;
+  };
+
   /** Stores an uploaded design: a PDF, a single .html page, or a .zip of a static site. */
   /** Stores the upload; returns { missing } for HTML sites so the agency can be warned about absent files. */
   const addVersion = (p, screenId, file) => {
@@ -485,18 +494,15 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     if (isHtmlName(name) || isZipName(name)) {
       const site = linkToEarlierSite(storeSite(file), siteCandidates(p));
       db.prepare(
-        `INSERT INTO versions (screen_id, round, original_name, stored_name, kind, site_token, entry, asset_base)
-         VALUES (?, ?, ?, ?, 'html', ?, ?, ?)`,
-      ).run(screenId, round, name, site.storedName, token(18), site.entry, site.assetBase ?? null);
+        `INSERT INTO versions (screen_id, round, original_name, stored_name, kind, site_token, entry, asset_base, after_approval)
+         VALUES (?, ?, ?, ?, 'html', ?, ?, ?, ?)`,
+      ).run(screenId, round, name, site.storedName, token(18), site.entry, site.assetBase ?? null, afterApproval(p));
       return { missing: site.missing };
     }
     const stored = storedUpload(file, ['application/pdf']);
-    db.prepare('INSERT INTO versions (screen_id, round, original_name, stored_name) VALUES (?, ?, ?, ?)').run(
-      screenId,
-      round,
-      name,
-      stored,
-    );
+    db.prepare(
+      'INSERT INTO versions (screen_id, round, original_name, stored_name, after_approval) VALUES (?, ?, ?, ?, ?)',
+    ).run(screenId, round, name, stored, afterApproval(p));
     return {};
   };
 
@@ -519,8 +525,8 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   const insertSiteVersion = (p, screenId, fileName, site, entry) =>
     db
       .prepare(
-        `INSERT INTO versions (screen_id, round, original_name, stored_name, kind, site_token, entry, asset_base)
-         VALUES (?, ?, ?, ?, 'html', ?, ?, ?)`,
+        `INSERT INTO versions (screen_id, round, original_name, stored_name, kind, site_token, entry, asset_base, after_approval)
+         VALUES (?, ?, ?, ?, 'html', ?, ?, ?, ?)`,
       )
       .run(
         screenId,
@@ -530,6 +536,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
         token(18),
         entry,
         site.assetBase ?? null,
+        afterApproval(p),
       );
 
   /** Earlier HTML uploads in this project (the root of each group) that a new upload could draw files from. */
@@ -606,9 +613,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   };
 
   const versionNote = (p, fileName, updated, added) => {
-    const round = Math.min(uploadRound(p), p.max_rounds + 1);
-    const label = round > p.max_rounds ? 'final version' : `round ${round} version`;
-    let note = `New ${label} from ${fileName}: updated ${updated.join(', ')}`;
+    let note = `New ${uploadLabel(p)} from ${fileName}: updated ${updated.join(', ')}`;
     if (added.length) note += `; added new page${added.length === 1 ? '' : 's'} ${added.join(', ')}`;
     return `${note}.`;
   };
@@ -635,7 +640,6 @@ export function createApp(db, { mailer = createMailer() } = {}) {
 
   app.post('/api/projects/:projectId/screens', requireUser, upload.single('file'), (req, res) => {
     const p = ownedProject(req);
-    if (p.stage === 'approved') fail(409, 'This project is already approved');
     // No title given: name the page after the file, the same way the upload page does (about.html -> "About").
     const title =
       cleanName(req.body.title) || cleanName(req.file ? pageTitle(req.file.originalname.replace(/\.(pdf|zip)$/i, '')) : '');
@@ -723,6 +727,10 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   app.delete('/api/projects/:projectId/screens/:screenId', requireUser, (req, res) => {
     const p = ownedProject(req);
     const s = q.screen.get(Number(req.params.screenId), p.id) ?? fail(404, 'Page not found');
+    // After approval the approved pages are the record; only a page added since then can be removed.
+    if (p.stage === 'approved' && db.prepare('SELECT 1 FROM versions WHERE screen_id = ? AND after_approval = 0').get(s.id)) {
+      fail(409, 'This page was approved by the client, so it can’t be deleted');
+    }
     deleteScreens(p, [s]);
     logEvent(p, req.user.name, 'screen_removed', `Page "${s.title}" removed`);
     res.json(projectBundle(q.project.get(p.id), { forClient: false }));
@@ -751,7 +759,6 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     upload.single('file'),
     (req, res) => {
       const p = ownedProject(req);
-      if (p.stage === 'approved') fail(409, 'This project is already approved');
       const s = q.screen.get(Number(req.params.screenId), p.id) ?? fail(404, 'Page not found');
       const fileName = req.file?.originalname?.slice(0, 200) ?? '';
       if (req.file && (isZipName(fileName) || isHtmlName(fileName))) {
@@ -764,9 +771,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
         });
       }
       const result = addVersion(p, s.id, req.file);
-      const round = Math.min(uploadRound(p), p.max_rounds + 1);
-      const label = round > p.max_rounds ? 'final version' : `round ${round} version`;
-      logEvent(p, req.user.name, 'version_uploaded', `New ${label} of "${s.title}" uploaded`);
+      logEvent(p, req.user.name, 'version_uploaded', `New ${uploadLabel(p)} of "${s.title}" uploaded`);
       res.json({
         ...projectBundle(q.project.get(p.id), { forClient: false }),
         upload_warning: uploadWarning(req.file?.originalname, result),

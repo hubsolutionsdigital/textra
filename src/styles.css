@@ -2361,3 +2361,10 @@ label {
   background: var(--primary-soft);
   border-color: var(--border);
 }
+.approved-note {
+  background: #e6f6ec;
+  border: 1px solid #b8e2c6;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 0.9rem;
+}

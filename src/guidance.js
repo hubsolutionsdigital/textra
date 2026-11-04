@@ -53,5 +53,6 @@ export const ordinal = (n) => ['first', 'second', 'third', 'fourth', 'fifth'][n 
 
 export function versionLabel(version, maxRounds) {
   if (!version) return 'No file yet';
+  if (version.after_approval) return 'After approval';
   return version.round > maxRounds ? 'Final' : `Round ${version.round}`;
 }

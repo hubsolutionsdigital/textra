@@ -548,6 +548,10 @@ function MissingFilesWarning({ warnings, onDismiss }) {
 const ACCEPTED = /\.(pdf|html?|zip)$/i;
 const ACCEPT_ATTR = 'application/pdf,.pdf,text/html,.html,.htm,application/zip,.zip';
 
+const APPROVED_UPLOAD_CONFIRM =
+  'The client has already approved this project.\n\nUpload anyway as an “after approval” update? It becomes the latest ' +
+  'version for your records (and what the client sees), and the approval stays in place.';
+
 function uploadTarget(project) {
   if (project.stage === 'review') return `round ${project.current_round}`;
   if (project.stage === 'revising') {
@@ -558,6 +562,7 @@ function uploadTarget(project) {
 
 function PagesTab({ project, screens, comments, mutate }) {
   const [busy, setBusy] = useState(false);
+  const approved = project.stage === 'approved';
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
   const [deleting, setDeleting] = useState(null); // the pages awaiting confirmation
@@ -576,6 +581,7 @@ function PagesTab({ project, screens, comments, mutate }) {
   };
 
   const addFiles = async (files) => {
+    if (!files.length || (approved && !window.confirm(APPROVED_UPLOAD_CONFIRM))) return;
     setBusy(true);
     try {
       for (const file of files) {
@@ -599,40 +605,45 @@ function PagesTab({ project, screens, comments, mutate }) {
 
   return (
     <div className="stack">
-      {!locked && (
-        <label
-          className={`dropzone ${busy ? 'busy' : ''}`}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault();
-            addFiles([...e.dataTransfer.files].filter((f) => ACCEPTED.test(f.name)));
-          }}
-        >
-          <input
-            type="file"
-            accept={ACCEPT_ATTR}
-            multiple
-            hidden
-            onChange={(e) => {
-              addFiles([...e.target.files]);
-              e.target.value = '';
-            }}
-          />
-          <div className="dropzone-emoji">📄</div>
-          <strong>{busy ? 'Uploading…' : 'Drop designs here or click to add pages'}</strong>
-          <span className="muted small">
-            One file per page: a <strong>PDF</strong>, an <strong>.html</strong> file, or a <strong>.zip</strong> of an
-            HTML prototype (with its CSS, JS, images and fonts, for animations and scroll effects). Rename pages after.
-            {screens.length > 0 && (
-              <>
-                <br />
-                Revised designs can go here too: pages with the same file name (e.g. <code>about.html</code>) get a new
-                version instead of a duplicate page.
-              </>
-            )}
-          </span>
-        </label>
+      {approved && (
+        <div className="approved-note">
+          ✅ <strong>Approved{project.approved_by ? ` by ${project.approved_by}` : ''}.</strong> You can still upload
+          changes the client asks for later: they’re saved as <strong>After approval</strong> versions for your records,
+          and the approval stays. Approved pages can’t be deleted.
+        </div>
       )}
+      <label
+        className={`dropzone ${busy ? 'busy' : ''}`}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          addFiles([...e.dataTransfer.files].filter((f) => ACCEPTED.test(f.name)));
+        }}
+      >
+        <input
+          type="file"
+          accept={ACCEPT_ATTR}
+          multiple
+          hidden
+          onChange={(e) => {
+            addFiles([...e.target.files]);
+            e.target.value = '';
+          }}
+        />
+        <div className="dropzone-emoji">📄</div>
+        <strong>{busy ? 'Uploading…' : 'Drop designs here or click to add pages'}</strong>
+        <span className="muted small">
+          One file per page: a <strong>PDF</strong>, an <strong>.html</strong> file, or a <strong>.zip</strong> of an
+          HTML prototype (with its CSS, JS, images and fonts, for animations and scroll effects). Rename pages after.
+          {screens.length > 0 && (
+            <>
+              <br />
+              Revised designs can go here too: pages with the same file name (e.g. <code>about.html</code>) get a new
+              version instead of a duplicate page.
+            </>
+          )}
+        </span>
+      </label>
       {screens.length > 0 && project.stage !== 'approved' && (
         <div className="muted small">New uploads will be shown to the client as {uploadTarget(project)}.</div>
       )}
@@ -792,6 +803,7 @@ function ScreenRow({ project, screen, comments, mutate, onMove, first, last, sel
     project.stage === 'revising' && (!screen.current_version || screen.current_version.round <= project.current_round);
 
   const upload = (file) => {
+    if (locked && !window.confirm(APPROVED_UPLOAD_CONFIRM)) return;
     const fd = new FormData();
     fd.append('file', file);
     mutate('POST', `/screens/${screen.id}/versions`, fd);
@@ -861,24 +873,22 @@ function ScreenRow({ project, screen, comments, mutate, onMove, first, last, sel
           <Link className="btn btn-sm" to={`/projects/${project.id}/screens/${screen.id}`}>
             View feedback
           </Link>
-          {!locked && (
-            <label className="btn btn-sm btn-ghost">
-              Upload new version
-              <input
-                type="file"
-                accept={ACCEPT_ATTR}
-                hidden
-                onChange={(e) => {
-                  if (e.target.files[0]) upload(e.target.files[0]);
-                  e.target.value = '';
-                }}
-              />
-            </label>
-          )}
+          <label className="btn btn-sm btn-ghost">
+            Upload new version
+            <input
+              type="file"
+              accept={ACCEPT_ATTR}
+              hidden
+              onChange={(e) => {
+                if (e.target.files[0]) upload(e.target.files[0]);
+                e.target.value = '';
+              }}
+            />
+          </label>
           <button className="btn btn-sm btn-ghost" onClick={() => setEditing(true)}>
             Edit
           </button>
-          {!locked && (
+          {(!locked || screen.versions.every((v) => v.after_approval)) && (
             <button
               className="btn btn-sm btn-ghost danger"
               onClick={() =>
