@@ -2156,6 +2156,7 @@ label {
   margin-top: 4px;
 }
 .team-replies {
+  margin-top: 28px;
   border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius);

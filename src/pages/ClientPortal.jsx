@@ -351,8 +351,6 @@ function Overview({ data, name, urls, openSubmit, replayWelcome, markRepliesSeen
         </section>
       )}
 
-      <TeamReplies data={data} markRepliesSeen={markRepliesSeen} answerReply={answerReply} />
-
       <div className="overview-grid">
         <section>
           <div className="section-head">
@@ -408,6 +406,9 @@ function Overview({ data, name, urls, openSubmit, replayWelcome, markRepliesSeen
           {reviewing && <HowItWorks />}
         </aside>
       </div>
+
+      {/* Below the pages, so the client starts with what to review and doesn't mistake this for a sign-off step. */}
+      <TeamReplies data={data} markRepliesSeen={markRepliesSeen} answerReply={answerReply} />
 
       <FeedbackLog data={data} urls={urls} />
       {reviewing && <HelpButton onClick={replayWelcome} label="Show the guide again" />}
