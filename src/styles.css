@@ -2368,3 +2368,9 @@ label {
   padding: 10px 14px;
   font-size: 0.9rem;
 }
+.share-viewers {
+  flex-basis: 100%;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: -4px;
+}

@@ -20,7 +20,9 @@ approval and a "development has started" hand-off.
   same file name get a new version, so comments from earlier rounds stay with them; only pages that are new become new pages.
 - Wrong upload? **Select pages** to delete several at once, or **Delete all pages** to start over. Both ask twice
   (a summary, then typing DELETE), because the pages' comments are deleted too. The client link stays the same.
-- Copy the client link. The same link works for every round.
+- Copy the client link. The same link works for every round. Under it: "👀 Viewed by Jane, Kei · 6 visits, last 2h
+  ago" (a visit is counted when someone enters their name, then once per browser session). Your own visits while
+  signed in to the dashboard aren't counted, here or on preview links.
 - **Preview links for prospects** (on the project page): a comment-free link to the latest designs, valid 1–5 days.
   Viewers only enter their name, then land on the home page and browse it like the real website (through its own
   menus, with a loading screen between pages). You see who opened it and how often, and can turn a link off early. When it expires,

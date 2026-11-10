@@ -104,6 +104,14 @@ CREATE TABLE IF NOT EXISTS events (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Who opened a project's client review link (by the name they entered), one row per visit.
+CREATE TABLE IF NOT EXISTS share_views (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  viewed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Comment-free preview links for prospects: expire after a few days; each viewer leaves their name.
 CREATE TABLE IF NOT EXISTS preview_links (
   id INTEGER PRIMARY KEY,

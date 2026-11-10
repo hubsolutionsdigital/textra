@@ -153,6 +153,19 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   const logEvent = (project, actor, type, message) =>
     q.addEvent.run(project.id, project.current_round, actor, type, message);
 
+  /** The agency checking its own link while signed in isn't a client visit. */
+  const isOwnerVisit = (req, projectOwnerId) => currentUser(req)?.id === projectOwnerId;
+  const recordShareView = (req, p, name) => {
+    if (!isOwnerVisit(req, p.owner_id)) db.prepare('INSERT INTO share_views (project_id, name) VALUES (?, ?)').run(p.id, name);
+  };
+  /** "Viewed by Jane, Kei · 6 visits, last …" for the client review link. */
+  const shareViewers = (p) => {
+    const rows = db.prepare('SELECT name, viewed_at FROM share_views WHERE project_id = ? ORDER BY id DESC').all(p.id);
+    const names = [];
+    for (const r of rows) if (!names.some((n) => n.toLowerCase() === r.name.toLowerCase())) names.push(r.name);
+    return { names, visits: rows.length, last: rows[0]?.viewed_at ?? null };
+  };
+
   /** Everything a viewer (agency or client) needs to render a project. */
   function projectBundle(project, { forClient }) {
     // site_group: pages from the same upload, or added later on top of it, belong together.
@@ -178,6 +191,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       comments,
       reviews: q.reviews.all(project.id),
       events: q.events.all(project.id),
+      ...(!forClient && { share_viewers: shareViewers(project) }),
     };
     return out;
   }
@@ -912,7 +926,8 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   app.post('/api/preview/:previewToken/view', (req, res) => {
     const link = previewLink(req);
     const name = cleanName(req.body.name) || fail(400, 'Please enter your name');
-    db.prepare('INSERT INTO preview_views (link_id, name) VALUES (?, ?)').run(link.id, name);
+    const owner = db.prepare('SELECT owner_id FROM projects WHERE id = ?').get(link.project_id)?.owner_id;
+    if (!isOwnerVisit(req, owner)) db.prepare('INSERT INTO preview_views (link_id, name) VALUES (?, ?)').run(link.id, name);
     res.json(previewBundle(link));
   });
 
@@ -997,6 +1012,15 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     const name = cleanName(req.body.name);
     if (!name) fail(400, 'Please enter your name');
     logEvent(p, name, 'joined', `${name} opened the review`);
+    recordShareView(req, p, name);
+    res.json({ ok: true });
+  });
+
+  /** A returning reviewer (name remembered in their browser) opened the link again; sent once per browser session. */
+  app.post('/api/share/:token/visit', (req, res) => {
+    const p = sharedProject(req);
+    const name = cleanName(req.body.name) || fail(400, 'Please enter your name');
+    recordShareView(req, p, name);
     res.json({ ok: true });
   });
 

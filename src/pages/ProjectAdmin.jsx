@@ -79,7 +79,7 @@ export default function ProjectAdmin() {
         </div>
 
         <RoundStepper project={project} />
-        <ShareBox project={project} />
+        <ShareBox project={project} viewers={data.share_viewers} />
         <PreviewLinks project={project} />
         <NextStep project={project} screens={screens} comments={comments} mutate={mutate} />
         <NewAnswersBanner
@@ -180,7 +180,17 @@ export function RoundStepper({ project }) {
   );
 }
 
-function ShareBox({ project }) {
+/** "👀 Viewed by Jane, Kei · 6 visits, last 2h ago", or "Not opened yet". */
+export function ViewedBy({ names, visits, last }) {
+  if (!visits) return <div className="muted small">Not opened yet</div>;
+  return (
+    <div className="muted small">
+      👀 Viewed by {names.join(', ')} · {visits} visit{visits === 1 ? '' : 's'}, last {timeAgo(last)}
+    </div>
+  );
+}
+
+function ShareBox({ project, viewers }) {
   const url = shareUrl(project);
   const [copied, setCopied] = useState(false);
   return (
@@ -207,6 +217,11 @@ function ShareBox({ project }) {
           Open as client ↗
         </a>
       </div>
+      {viewers && (
+        <div className="share-viewers">
+          <ViewedBy {...viewers} />
+        </div>
+      )}
     </div>
   );
 }
@@ -318,13 +333,11 @@ function PreviewLinks({ project }) {
                 )}
               </div>
               {live(l) && <code className="preview-url">{urlOf(l)}</code>}
-              <div className="muted small">
-                {l.views.length === 0
-                  ? 'Not opened yet'
-                  : `👀 Viewed by ${[...new Set(l.views.map((v) => v.name))].join(', ')} · ${l.views.length} visit${
-                      l.views.length === 1 ? '' : 's'
-                    }, last ${timeAgo(l.views[0].viewed_at)}`}
-              </div>
+              <ViewedBy
+                names={[...new Map(l.views.map((v) => [v.name.toLowerCase(), v.name])).values()]}
+                visits={l.views.length}
+                last={l.views[0]?.viewed_at}
+              />
             </li>
           ))}
         </ul>

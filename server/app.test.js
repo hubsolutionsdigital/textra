@@ -940,3 +940,33 @@ test('after approval the team can still upload changes: kept as after-approval v
   assert.equal(r.data.screens.length, 2);
   assert.ok(about);
 });
+
+test('client review link shows who viewed it; the agency’s own signed-in visits are not counted', async () => {
+  await api('POST', '/api/auth/register', { email: 'viewers@studio.test', name: 'Hub Solutions', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Viewers', notify_emails: 'pm@studio.test' });
+  const { id: projectId, share_token: shareToken } = r.data.project;
+  r = await api('GET', `/api/projects/${projectId}`);
+  assert.deepEqual(r.data.share_viewers, { names: [], visits: 0, last: null });
+
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'Kumar' }, { agency: false });
+  await api('POST', `/api/share/${shareToken}/visit`, { name: 'Kumar' }, { agency: false });
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'jane' }, { agency: false });
+  await api('POST', `/api/share/${shareToken}/visit`, { name: 'Jane' }, { agency: false });
+  // the agency opening its own link while signed in
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'Susan' });
+
+  r = await api('GET', `/api/projects/${projectId}`);
+  assert.deepEqual(r.data.share_viewers.names, ['Jane', 'Kumar'], 'latest first, one entry per person');
+  assert.equal(r.data.share_viewers.visits, 4);
+  assert.ok(r.data.share_viewers.last);
+  r = await api('GET', `/api/share/${shareToken}`, undefined, { agency: false });
+  assert.equal(r.data.share_viewers, undefined, 'clients don’t see who else viewed');
+
+  // same for preview links
+  r = await api('POST', `/api/projects/${projectId}/previews`, { days: 1 });
+  const link = r.data.links[0];
+  await api('POST', `/api/preview/${link.token}/view`, { name: 'Susan' });
+  await api('POST', `/api/preview/${link.token}/view`, { name: 'Prospect' }, { agency: false });
+  r = await api('GET', `/api/projects/${projectId}/previews`);
+  assert.deepEqual(r.data.links[0].views.map((v) => v.name), ['Prospect']);
+});

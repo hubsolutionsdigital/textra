@@ -40,6 +40,20 @@ export default function ClientPortal() {
     return () => clearInterval(t);
   }, [load]);
 
+  // A returning reviewer (name remembered here) counts as a visit once per browser session, so the team can
+  // see who has opened the link. First visits are counted when they enter their name.
+  useEffect(() => {
+    if (!name) return;
+    const key = `review-visit:${token}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+    } catch {
+      /* private mode: count this load */
+    }
+    api('POST', `/api/share/${token}/visit`, { name }).catch(() => {});
+  }, [name, token]);
+
   const call = async (method, path, body) => setData(await api(method, `/api/share/${token}${path}`, body));
 
   const myRoundComments = useMemo(
@@ -74,6 +88,11 @@ export default function ClientPortal() {
         project={project}
         onSubmit={async (n) => {
           await api('POST', `/api/share/${token}/join`, { name: n });
+          try {
+            sessionStorage.setItem(`review-visit:${token}`, '1'); // the join already counted this visit
+          } catch {
+            /* ignore */
+          }
           storage.set(`review-name:${token}`, n);
           setName(n);
         }}
