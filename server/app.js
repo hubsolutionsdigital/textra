@@ -929,8 +929,20 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       label: link.label,
     };
   };
-  const previewLink = (req) =>
-    livePreview(req.params.previewToken) ?? fail(410, 'This preview link has expired. Please ask for a new one.');
+  /** The working link, or an error that says why not: unknown address, turned off, or expired (and when). */
+  const previewLink = (req) => {
+    const live = livePreview(req.params.previewToken);
+    if (live) return live;
+    const any = db.prepare('SELECT * FROM preview_links WHERE token = ?').get(String(req.params.previewToken));
+    if (!any) fail(404, 'We couldn’t find this preview link. Please check that the whole link was copied, or ask for a new one.');
+    if (any.revoked_at) fail(410, 'This preview link has been turned off. Please ask for a new one.');
+    fail(410, `This preview link expired on ${new Date(`${any.expires_at.replace(' ', 'T')}Z`).toUTCString().slice(5, 16)}. Please ask for a new one.`);
+  };
+  // Never let a browser or proxy keep an old "expired" answer after the link is extended.
+  app.use('/api/preview', (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   app.get('/api/preview/:previewToken', (req, res) => {
     res.json(previewBundle(previewLink(req)));

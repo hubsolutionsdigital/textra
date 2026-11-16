@@ -983,6 +983,10 @@ test('an expired or turned-off preview link can be extended, keeping the same ad
   raw.close();
   r = await api('GET', `/api/preview/${link.token}`, undefined, { agency: false });
   assert.equal(r.status, 410);
+  assert.match(r.data.error, /expired on \d{1,2} \w{3} \d{4}/);
+  r = await api('GET', `/api/preview/${link.token.slice(0, -3)}`, undefined, { agency: false });
+  assert.equal(r.status, 404, 'a cut-off link says so');
+  assert.match(r.data.error, /whole link was copied/);
 
   r = await api('POST', `/api/projects/${projectId}/previews/${link.id}/extend`, { days: 6 });
   assert.equal(r.status, 400, 'still at most 5 days');
@@ -995,7 +999,11 @@ test('an expired or turned-off preview link can be extended, keeping the same ad
   r = await api('GET', `/api/preview/${link.token}`, undefined, { agency: false });
   assert.equal(r.status, 200, 'works again');
 
+  const res = await fetch(`${base}/api/preview/${link.token}`);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
   await api('DELETE', `/api/projects/${projectId}/previews/${link.id}`);
+  r = await api('GET', `/api/preview/${link.token}`, undefined, { agency: false });
+  assert.match(r.data.error, /turned off/);
   r = await api('POST', `/api/projects/${projectId}/previews/${link.id}/extend`, { days: 5 });
   assert.equal(r.data.links[0].revoked_at, null, 'extending turns it back on');
   r = await api('GET', `/api/projects/${projectId}`);

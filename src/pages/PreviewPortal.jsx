@@ -44,6 +44,9 @@ export default function PreviewPortal() {
           <div className="big-emoji">⏳</div>
           <h1>This preview isn’t available</h1>
           <p className="muted">{error}</p>
+          <button className="btn" onClick={() => window.location.reload()}>
+            Try again
+          </button>
         </div>
       </div>
     );
