@@ -56,3 +56,10 @@ export function versionLabel(version, maxRounds) {
   if (version.after_approval) return 'After approval';
   return version.round > maxRounds ? 'Final' : `Round ${version.round}`;
 }
+
+/** A round beyond those originally included: an "extended support round". */
+export const isExtendedRound = (project, r = project.current_round) => !!project.included_rounds && r > project.included_rounds;
+
+/** "Round 2", or "Round 4 · Extended support" for a round added after the included ones. */
+export const roundName = (project, r = project.current_round) =>
+  isExtendedRound(project, r) ? `Round ${r} · Extended support` : `Round ${r}`;

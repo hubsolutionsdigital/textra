@@ -2,7 +2,13 @@
 export function stageInfo(p) {
   switch (p.stage) {
     case 'review':
-      return { label: `Round ${p.current_round} of ${p.max_rounds} · client reviewing`, tone: 'blue' };
+      return {
+        label:
+          p.included_rounds && p.current_round > p.included_rounds
+            ? `Round ${p.current_round} · extended support · client reviewing`
+            : `Round ${p.current_round} of ${p.max_rounds} · client reviewing`,
+        tone: 'blue',
+      };
     case 'revising':
       return p.current_round >= p.max_rounds
         ? { label: 'All rounds in · prepare final', tone: 'amber' }

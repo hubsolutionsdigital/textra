@@ -46,6 +46,10 @@ approval and a "development has started" hand-off.
 - After approval you can still upload changes the client asks for later (drop zone or **Upload new version**, after
   a confirmation). They're saved as **After approval** versions for the record, earlier versions are kept, and the
   approval stays. Approved pages can't be deleted; the client sees an "Updated after approval" badge.
+- Client wants more after the included rounds? **Open extended support round** (on the final-approval card, the last
+  round's card, or even after approval) adds one more round, shown as "Round 4 · Extended support". You can edit the
+  terms (default: no further revisions after this round); the client must tick "I understand…" and accept them before
+  they can comment, and you see "Terms accepted by Jane on …".
 - Add the live-site URL once it's up, and the client sees a **View your live site** button.
 - The activity log records every step (who joined, submissions, uploads, approvals).
 

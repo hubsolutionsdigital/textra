@@ -56,6 +56,11 @@ function verifyPassword(password, stored) {
 
 const token = (bytes = 24) => crypto.randomBytes(bytes).toString('base64url');
 
+const DEFAULT_EXTENDED_TERMS =
+  'This is an extended support round, added after the revision rounds included in our agreement. ' +
+  'Please share all remaining feedback in this round: no further revisions will be made after it. ' +
+  'Any changes requested after this round will be quoted separately as new work.';
+
 const cleanName = (name) => String(name ?? '').trim().slice(0, 80);
 
 function storedUpload(file, allowed) {
@@ -152,6 +157,9 @@ export function createApp(db, { mailer = createMailer() } = {}) {
 
   const logEvent = (project, actor, type, message) =>
     q.addEvent.run(project.id, project.current_round, actor, type, message);
+
+  /** A round beyond those originally included ("extended support round"). */
+  const isExtendedRound = (p) => !!p.included_rounds && p.current_round > p.included_rounds;
 
   /** The agency checking its own link while signed in isn't a client visit. */
   const isOwnerVisit = (req, projectOwnerId) => currentUser(req)?.id === projectOwnerId;
@@ -453,6 +461,25 @@ export function createApp(db, { mailer = createMailer() } = {}) {
         ).run(p.current_round, p.current_round + 1, p.id);
       });
       logEvent(p, req.user.name, 'round_reopened', `Round ${p.current_round} reopened for more feedback`);
+    } else if (action === 'extend_round') {
+      // One more round after the included ones are used up, even after the final was sent or approved.
+      // The client has to accept the terms (e.g. no revisions after this round) before reviewing.
+      const lastUsed = p.stage === 'final' || p.stage === 'approved' || (p.stage === 'revising' && p.current_round >= p.max_rounds);
+      if (!lastUsed) fail(409, 'An extended round can be opened once the included rounds are used up');
+      const terms = String(req.body.terms ?? '').trim().slice(0, 4000) || DEFAULT_EXTENDED_TERMS;
+      const round = p.max_rounds + 1;
+      db.prepare(
+        `UPDATE projects SET included_rounds = COALESCE(included_rounds, max_rounds), max_rounds = ?, current_round = ?,
+           stage = 'review', extended_terms = ?, terms_ack_round = NULL, terms_ack_by = NULL, terms_ack_at = NULL,
+           approved_by = NULL, approved_at = NULL
+         WHERE id = ?`,
+      ).run(round, round, terms, p.id);
+      logEvent(
+        q.project.get(p.id),
+        req.user.name,
+        'extended_round',
+        `Extended support round (round ${round}) opened${p.stage === 'approved' ? `, after approval by ${p.approved_by}` : ''}`,
+      );
     } else if (action === 'close_round') {
       // The client gave their feedback but never pressed Submit: lock the round for them.
       if (p.stage !== 'review') fail(409, 'This round is not open for review');
@@ -1054,6 +1081,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     const cleanup = () => (req.files ?? []).forEach((f) => fs.rmSync(f.path, { force: true }));
     try {
       if (!clientCanComment(p)) fail(409, 'This round is closed for comments');
+      if (isExtendedRound(p) && p.terms_ack_round !== p.current_round) fail(409, 'Please accept the terms for this round first');
       const author = cleanName(req.body.author_name) || fail(400, 'Please enter your name first');
       const s = q.screen.get(Number(req.body.screen_id), p.id) ?? fail(404, 'Page not found');
       const kind = PRESET_KINDS.includes(req.body.kind) ? req.body.kind : fail(400, 'Unknown comment type');
@@ -1114,6 +1142,22 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     ).run(body, author, author, c.id);
     const screen = db.prepare('SELECT title FROM screens WHERE id = ?').get(c.screen_id);
     logEvent(p, author, 'client_answered', `${author} answered the team’s reply on ${screen?.title ?? 'a page'}: “${body.slice(0, 80)}${body.length > 80 ? '…' : ''}”`);
+    res.json(projectBundle(q.project.get(p.id), { forClient: true }));
+  });
+
+  /** The client accepts the extended round's terms before reviewing it. */
+  app.post('/api/share/:token/accept-terms', (req, res) => {
+    const p = sharedProject(req);
+    const name = cleanName(req.body.author_name) || fail(400, 'Please enter your name first');
+    if (!isExtendedRound(p) || p.stage !== 'review') fail(409, 'There are no terms to accept right now');
+    if (p.terms_ack_round !== p.current_round) {
+      db.prepare(`UPDATE projects SET terms_ack_round = ?, terms_ack_by = ?, terms_ack_at = datetime('now') WHERE id = ?`).run(
+        p.current_round,
+        name,
+        p.id,
+      );
+      logEvent(p, name, 'terms_accepted', `${name} accepted the terms of the extended support round`);
+    }
     res.json(projectBundle(q.project.get(p.id), { forClient: true }));
   });
 

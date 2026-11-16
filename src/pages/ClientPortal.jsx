@@ -5,7 +5,7 @@ import Modal from '../components/Modal.jsx';
 import ReviewViewer from '../components/ReviewViewer.jsx';
 import GuidedTour from '../components/GuidedTour.jsx';
 import CommentCard, { ClientAnswer, asksQuestion } from '../components/CommentCard.jsx';
-import { KINDS, isActionable, ordinal, roundFocus } from '../guidance.js';
+import { KINDS, isActionable, isExtendedRound, ordinal, roundFocus } from '../guidance.js';
 import { celebrate } from '../confetti.js';
 import { plural, storage } from '../util.js';
 
@@ -103,6 +103,9 @@ export default function ClientPortal() {
   // Team replies the client hasn't confirmed reading; "important" ones must be read before carrying on.
   const unreadReplies = data.comments.filter((c) => c.agency_reply && !c.reply_seen_at);
   const importantUnread = unreadReplies.filter((c) => c.reply_important);
+  // Extended support round: the client accepts the terms (no revisions after this round) before anything else.
+  const termsPending =
+    project.stage === 'review' && isExtendedRound(project) && project.terms_ack_round !== project.current_round;
   const welcomeKey = `review-tour:${token}:${project.current_round}`;
   const welcomeShowing =
     project.stage === 'review' && (!storage.get(welcomeKey) || welcomeReplay > welcomeClosed) && data.screens.length > 0;
@@ -117,7 +120,7 @@ export default function ClientPortal() {
     replayWelcome: () => setWelcomeReplay((n) => n + 1),
     markRepliesSeen: (ids) => call('POST', '/replies/seen', { author_name: name, ids }),
     answerReply: (c, body) => call('POST', `/comments/${c.id}/answer`, { author_name: name, body }),
-    importantPending: importantUnread.length > 0,
+    importantPending: importantUnread.length > 0 || termsPending,
   };
 
   return (
@@ -138,7 +141,8 @@ export default function ClientPortal() {
         <Route index element={<Overview {...ctx} />} />
         <Route path="p/:screenId" element={<ClientScreen {...ctx} />} />
       </Routes>
-      {project.stage === 'review' && (
+      {termsPending && <TermsModal {...ctx} />}
+      {project.stage === 'review' && !termsPending && (
         <TourModal
           key={`${project.current_round}-${welcomeReplay}`}
           force={welcomeReplay > 0}
@@ -146,7 +150,7 @@ export default function ClientPortal() {
           {...ctx}
         />
       )}
-      {importantUnread.length > 0 && !welcomeShowing && !submitOpen && (
+      {importantUnread.length > 0 && !welcomeShowing && !submitOpen && !termsPending && (
         <ImportantRepliesModal {...ctx} replies={importantUnread} />
       )}
       {submitOpen && project.stage === 'review' && (
@@ -240,7 +244,9 @@ function NameGate({ project, onSubmit }) {
 function ClientHeader({ project, name, onChangeName, onSubmit, commentCount, reviewedCount, totalScreens }) {
   const ready = totalScreens > 0 && reviewedCount === totalScreens;
   const stageLabel = {
-    review: `Round ${project.current_round} of ${project.max_rounds}`,
+    review: isExtendedRound(project)
+      ? `Round ${project.current_round} · Extended support`
+      : `Round ${project.current_round} of ${project.max_rounds}`,
     revising: `Round ${project.current_round} submitted`,
     final: 'Final approval',
     approved: 'Approved 🎉',
@@ -356,7 +362,7 @@ function Overview({ data, name, urls, openSubmit, replayWelcome, markRepliesSeen
       {reviewing && (
         <section className="hello">
           <h1>
-            Hi {name} 👋 Let’s review your {ordinal(project.current_round)} round
+            Hi {name} 👋 Let’s review {isExtendedRound(project) ? 'the extended support round' : `your ${ordinal(project.current_round)} round`}
           </h1>
           {project.welcome_message && <p className="welcome">{project.welcome_message}</p>}
           <RoundTrack project={project} />
@@ -539,6 +545,52 @@ function TeamReplies({ data, markRepliesSeen, answerReply }) {
   );
 }
 
+/** Before an extended support round: the terms, which the client must accept to start reviewing. */
+function TermsModal({ data, name, call }) {
+  const { project } = data;
+  const [agreed, setAgreed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  return (
+    <Modal className="terms-modal">
+      <div className="big-emoji">📝</div>
+      <h2>Extended support round (round {project.current_round})</h2>
+      <p className="muted">
+        You’ve used the {project.included_rounds} revision round{project.included_rounds === 1 ? '' : 's'} included,
+        and {project.agency_name || 'the team'} has opened one more round for your feedback. Please read and accept
+        these terms first:
+      </p>
+      <div className="terms-box">{project.extended_terms}</div>
+      <label className="terms-check">
+        <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+        <span>
+          I understand this is the <strong>final round of revisions</strong> and that no further revisions will be made
+          after it.
+        </span>
+      </label>
+      {error && <div className="form-error">{error}</div>}
+      <div className="row-end">
+        <button
+          className="btn btn-primary"
+          disabled={!agreed || busy}
+          onClick={async () => {
+            setBusy(true);
+            setError('');
+            try {
+              await call('POST', '/accept-terms', { author_name: name });
+            } catch (err) {
+              setError(err.message);
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? 'Saving…' : 'I agree, start reviewing →'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 /** Replies the team marked important pop up until the client confirms they've read them. */
 function ImportantRepliesModal({ data, token, replies, markRepliesSeen, answerReply }) {
   const navigate = useNavigate();
@@ -603,7 +655,7 @@ function RoundTrack({ project }) {
         return (
           <div key={r} className={`track-step ${cls}`}>
             <span>{cls === 'done' ? '✓' : r}</span>
-            Round {r}
+            {isExtendedRound(project, r) ? 'Extended support' : `Round ${r}`}
           </div>
         );
       })}

@@ -197,6 +197,12 @@ function migrate(db) {
   if (!has('comments', 'client_reply_seen_at')) db.exec('ALTER TABLE comments ADD COLUMN client_reply_seen_at TEXT');
   // Uploaded after the client approved (e.g. a change they asked for later), kept for the record.
   if (!has('versions', 'after_approval')) db.exec('ALTER TABLE versions ADD COLUMN after_approval INTEGER NOT NULL DEFAULT 0');
+  // Extended support rounds beyond the rounds originally included, with terms the client must accept first.
+  if (!has('projects', 'included_rounds')) db.exec('ALTER TABLE projects ADD COLUMN included_rounds INTEGER');
+  if (!has('projects', 'extended_terms')) db.exec(`ALTER TABLE projects ADD COLUMN extended_terms TEXT NOT NULL DEFAULT ''`);
+  if (!has('projects', 'terms_ack_round')) db.exec('ALTER TABLE projects ADD COLUMN terms_ack_round INTEGER');
+  if (!has('projects', 'terms_ack_by')) db.exec('ALTER TABLE projects ADD COLUMN terms_ack_by TEXT');
+  if (!has('projects', 'terms_ack_at')) db.exec('ALTER TABLE projects ADD COLUMN terms_ack_at TEXT');
 }
 
 /** Run fn inside a transaction. */

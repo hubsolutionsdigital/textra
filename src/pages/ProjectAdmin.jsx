@@ -4,7 +4,7 @@ import { api, fileUrls } from '../api.js';
 import AppHeader from '../components/AppHeader.jsx';
 import CommentCard from '../components/CommentCard.jsx';
 import Modal from '../components/Modal.jsx';
-import { isActionable, versionLabel } from '../guidance.js';
+import { isActionable, isExtendedRound, roundName, versionLabel } from '../guidance.js';
 import { shareUrl, stageInfo } from '../stage.js';
 import { formatDate, parseDate, plural, timeAgo } from '../util.js';
 
@@ -156,7 +156,7 @@ export function NewAnswersBanner({ comments, onView }) {
 
 export function RoundStepper({ project }) {
   const steps = [
-    ...Array.from({ length: project.max_rounds }, (_, i) => ({ key: i + 1, label: `Round ${i + 1}` })),
+    ...Array.from({ length: project.max_rounds }, (_, i) => ({ key: i + 1, label: roundName(project, i + 1) })),
     { key: 'final', label: 'Final approval' },
     { key: 'approved', label: 'Development' },
   ];
@@ -390,6 +390,68 @@ function ExtendLink({ label, onExtend, compact }) {
   );
 }
 
+const DEFAULT_TERMS =
+  'This is an extended support round, added after the revision rounds included in our agreement. Please share all ' +
+  'remaining feedback in this round: no further revisions will be made after it. Any changes requested after this ' +
+  'round will be quoted separately as new work.';
+
+/** Opens one more round after the included ones, with terms the client must accept before reviewing. */
+function ExtendRoundButton({ project, mutate, afterApproval }) {
+  const [open, setOpen] = useState(false);
+  const [terms, setTerms] = useState(project.extended_terms || DEFAULT_TERMS);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const next = project.max_rounds + 1;
+  return (
+    <>
+      <button className="btn btn-ghost" onClick={() => setOpen(true)}>
+        ➕ Open extended support round (round {next})
+      </button>
+      {open && (
+        <Modal onClose={busy ? undefined : () => setOpen(false)} wide>
+          <h2>Open an extended support round?</h2>
+          <p className="muted">
+            Round {next} opens on the same link as <strong>“Round {next} · Extended support”</strong>.{' '}
+            {afterApproval
+              ? `The approval by ${project.approved_by} is set aside so the client can review again (it stays in the activity log). `
+              : ''}
+            Upload the latest designs first if you haven’t: the client sees the newest version of every page. Before
+            they can comment, they must accept these terms:
+          </p>
+          <label className="stack-sm">
+            <span className="field-label">Terms shown to the client</span>
+            <textarea rows={5} value={terms} onChange={(e) => setTerms(e.target.value)} maxLength={4000} />
+          </label>
+          {error && <div className="form-error">{error}</div>}
+          <div className="row-end">
+            <button className="btn btn-ghost" disabled={busy} onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={busy || !terms.trim()}
+              onClick={async () => {
+                setBusy(true);
+                setError('');
+                try {
+                  await mutate('POST', '/advance', { action: 'extend_round', terms });
+                  setOpen(false);
+                } catch (err) {
+                  setError(err.message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? 'Opening…' : `Open round ${next}`}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 function NextStep({ project, screens, comments, mutate }) {
   const r = project.current_round;
   const roundComments = comments.filter((c) => c.round === r);
@@ -416,7 +478,14 @@ function NextStep({ project, screens, comments, mutate }) {
         <div className="next-step">
           <div className="next-emoji">👀</div>
           <div>
-            <strong>Waiting for the client to review round {r}</strong>
+            <strong>Waiting for the client to review {isExtendedRound(project) ? 'the extended support round' : `round ${r}`}</strong>
+            {isExtendedRound(project) && (
+              <p className={project.terms_ack_round === r ? 'terms-status ok' : 'terms-status'}>
+                {project.terms_ack_round === r
+                  ? `✅ Terms accepted by ${project.terms_ack_by} on ${formatDate(project.terms_ack_at)}`
+                  : '⏳ The client has to accept the terms (no revisions after this round) before they can comment.'}
+              </p>
+            )}
             <p className="muted">
               {plural(roundComments.length, 'comment')} so far. You’ll see them live; the round locks once they submit.
               {project.notify_emails
@@ -461,14 +530,17 @@ function NextStep({ project, screens, comments, mutate }) {
             </p>
             <div className="row">
               {lastRound ? (
-                <button
-                  className="btn btn-primary"
-                  onClick={() =>
-                    confirmAndAdvance('send_final', 'Send the final designs to the client for approval?')
-                  }
-                >
-                  Send final for approval →
-                </button>
+                <>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() =>
+                      confirmAndAdvance('send_final', 'Send the final designs to the client for approval?')
+                    }
+                  >
+                    Send final for approval →
+                  </button>
+                  <ExtendRoundButton project={project} mutate={mutate} />
+                </>
               ) : (
                 <>
                   <button
@@ -513,7 +585,13 @@ function NextStep({ project, screens, comments, mutate }) {
           <div className="next-emoji">⏳</div>
           <div>
             <strong>Final design sent, waiting for the client to approve</strong>
-            <p className="muted">Once they approve, you’ll see it here and development can start.</p>
+            <p className="muted">
+              Once they approve, you’ll see it here and development can start. If they ask for another round of
+              changes instead, open an extended support round.
+            </p>
+            <div className="row">
+              <ExtendRoundButton project={project} mutate={mutate} />
+            </div>
           </div>
         </div>
       );
@@ -530,6 +608,9 @@ function NextStep({ project, screens, comments, mutate }) {
                 ? `The client can see the live site: ${project.live_url}`
                 : 'When the site is live, add the URL in Settings and it will show on the client’s page.'}
             </p>
+            <div className="row">
+              <ExtendRoundButton project={project} mutate={mutate} afterApproval />
+            </div>
           </div>
         </div>
       );

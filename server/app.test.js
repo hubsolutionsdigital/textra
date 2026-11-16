@@ -1009,3 +1009,70 @@ test('an expired or turned-off preview link can be extended, keeping the same ad
   r = await api('GET', `/api/projects/${projectId}`);
   assert.match(r.data.events[0].message, /Preview link for Acme extended by 5 days/);
 });
+
+test('extended support round: opened after the final, client must accept the terms before commenting', async () => {
+  await api('POST', '/api/auth/register', { email: 'extra@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Extra', notify_emails: 'pm@studio.test', max_rounds: 3 });
+  const { id: projectId, share_token: shareToken } = r.data.project;
+  const upload = (screenId) => {
+    const fd = new FormData();
+    fd.append('title', 'Home');
+    fd.append('file', pdfBlob(), 'home.pdf');
+    return api('POST', screenId ? `/api/projects/${projectId}/screens/${screenId}/versions` : `/api/projects/${projectId}/screens`, fd);
+  };
+  r = await upload();
+  const screenId = r.data.screens[0].id;
+  await api('POST', `/api/share/${shareToken}/join`, { name: 'Jane' }, { agency: false });
+
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'extend_round' });
+  assert.equal(r.status, 409, 'not while included rounds remain');
+
+  for (let round = 1; round <= 3; round++) {
+    await api('POST', `/api/share/${shareToken}/screens/${screenId}/reviewed`, { author_name: 'Jane' }, { agency: false });
+    await api('POST', `/api/share/${shareToken}/submit`, { author_name: 'Jane' }, { agency: false });
+    await upload(screenId);
+    if (round < 3) await api('POST', `/api/projects/${projectId}/advance`, { action: 'next_round' });
+  }
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'send_final' });
+  assert.equal(r.data.project.stage, 'final');
+
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'extend_round', terms: 'No revisions after round 4.' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.project.stage, 'review');
+  assert.equal(r.data.project.current_round, 4);
+  assert.equal(r.data.project.max_rounds, 4);
+  assert.equal(r.data.project.included_rounds, 3);
+  assert.equal(r.data.project.extended_terms, 'No revisions after round 4.');
+  assert.equal(r.data.screens[0].current_version.round, 4, 'the final upload is what round 4 reviews');
+  assert.match(r.data.events[0].message, /Extended support round \(round 4\) opened/);
+
+  const comment = () => api('POST', `/api/share/${shareToken}/comments`, { author_name: 'Jane', screen_id: screenId, kind: 'change', body: 'One more thing', x: 0.5, y: 0.5 }, { agency: false });
+  r = await comment();
+  assert.equal(r.status, 409, 'terms first');
+  r = await api('POST', `/api/share/${shareToken}/accept-terms`, { author_name: 'Jane' }, { agency: false });
+  assert.equal(r.data.project.terms_ack_round, 4);
+  assert.equal(r.data.project.terms_ack_by, 'Jane');
+  r = await comment();
+  assert.equal(r.status, 200);
+  assert.equal(r.data.comments.at(-1).round, 4);
+
+  // round 4 finishes like the last round: submit, then send the final again
+  await api('POST', `/api/share/${shareToken}/screens/${screenId}/reviewed`, { author_name: 'Jane' }, { agency: false });
+  r = await api('POST', `/api/share/${shareToken}/submit`, { author_name: 'Jane' }, { agency: false });
+  assert.equal(r.data.project.stage, 'revising');
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'next_round' });
+  assert.equal(r.status, 409, 'no automatic round 5');
+  await upload(screenId);
+  await api('POST', `/api/projects/${projectId}/advance`, { action: 'send_final' });
+  r = await api('POST', `/api/share/${shareToken}/approve`, { author_name: 'Jane' }, { agency: false });
+  assert.equal(r.data.project.stage, 'approved');
+
+  // even after approval another extended round can be opened; the approval is set aside and terms asked again
+  r = await api('POST', `/api/projects/${projectId}/advance`, { action: 'extend_round' });
+  assert.equal(r.data.project.current_round, 5);
+  assert.equal(r.data.project.included_rounds, 3);
+  assert.equal(r.data.project.approved_by, null);
+  assert.equal(r.data.project.terms_ack_round, null);
+  assert.match(r.data.project.extended_terms, /no further revisions/);
+  assert.match(r.data.events[0].message, /after approval by Jane/);
+});
