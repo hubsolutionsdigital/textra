@@ -890,6 +890,19 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     res.json({ links: previewLinks(p) });
   });
 
+  /** Gives a link (expired, turned off or still running) a fresh 1–5 days from now, keeping the same address. */
+  app.post('/api/projects/:projectId/previews/:linkId/extend', requireUser, (req, res) => {
+    const p = ownedProject(req);
+    const days = Math.round(Number(req.body.days ?? PREVIEW_MAX_DAYS));
+    if (!(days >= 1 && days <= PREVIEW_MAX_DAYS)) fail(400, `A preview link can last 1 to ${PREVIEW_MAX_DAYS} days`);
+    const link =
+      db.prepare('SELECT * FROM preview_links WHERE id = ? AND project_id = ?').get(Number(req.params.linkId), p.id) ??
+      fail(404, 'Preview link not found');
+    db.prepare(`UPDATE preview_links SET expires_at = datetime('now', ?), revoked_at = NULL WHERE id = ?`).run(`+${days} days`, link.id);
+    logEvent(p, req.user.name, 'preview_extended', `Preview link${link.label ? ` for ${link.label}` : ''} extended by ${days} day${days === 1 ? '' : 's'}`);
+    res.json({ links: previewLinks(p) });
+  });
+
   /** The project as a prospect sees it: the latest version of each page and nothing else. */
   const previewBundle = (link) => {
     const p = q.project.get(link.project_id);

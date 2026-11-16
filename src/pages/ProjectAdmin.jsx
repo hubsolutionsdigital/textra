@@ -249,7 +249,9 @@ function PreviewLinks({ project }) {
   if (!links) return null;
   const urlOf = (l) => `${window.location.origin}/p/${l.token}`;
   const live = (l) => !l.revoked_at && parseDate(l.expires_at) > new Date();
-  const active = links.filter(live);
+  // Links that ran out in the last two weeks stay in view, so one already sent is easy to extend.
+  const recent = (l) => live(l) || parseDate(l.revoked_at || l.expires_at) > new Date(Date.now() - 14 * 864e5);
+  const active = links.filter(recent);
   const shown = open ? links : active;
 
   return (
@@ -263,7 +265,7 @@ function PreviewLinks({ project }) {
         </div>
         {links.length > active.length && (
           <button className="link-btn" onClick={() => setOpen((v) => !v)}>
-            {open ? 'Hide expired' : `Show expired (${links.length - active.length})`}
+            {open ? 'Hide older links' : `Show older links (${links.length - active.length})`}
           </button>
         )}
       </div>
@@ -305,6 +307,9 @@ function PreviewLinks({ project }) {
                         : `· expired ${formatDate(l.expires_at)}`}
                   </span>
                 </div>
+                {!live(l) && (
+                  <ExtendLink label="Extend link" onExtend={(days) => run('POST', `${base}/${l.id}/extend`, { days })} />
+                )}
                 {live(l) && (
                   <>
                     <button
@@ -320,6 +325,7 @@ function PreviewLinks({ project }) {
                     <a className="btn btn-sm btn-ghost" href={urlOf(l)} target="_blank" rel="noreferrer">
                       Open ↗
                     </a>
+                    <ExtendLink label="Extend" compact onExtend={(days) => run('POST', `${base}/${l.id}/extend`, { days })} />
                     <button
                       className="btn btn-sm btn-ghost danger"
                       onClick={() =>
@@ -332,7 +338,12 @@ function PreviewLinks({ project }) {
                   </>
                 )}
               </div>
-              {live(l) && <code className="preview-url">{urlOf(l)}</code>}
+              <code className="preview-url">{urlOf(l)}</code>
+              {!live(l) && (
+                <div className="muted small">
+                  Extending keeps this same link, so anyone you already sent it to can use it again.
+                </div>
+              )}
               <ViewedBy
                 names={[...new Map(l.views.map((v) => [v.name.toLowerCase(), v.name])).values()]}
                 visits={l.views.length}
@@ -343,6 +354,39 @@ function PreviewLinks({ project }) {
         </ul>
       )}
     </div>
+  );
+}
+
+/** "Extend link" with how many days from today (1–5); the link address stays the same. */
+function ExtendLink({ label, onExtend, compact }) {
+  const [days, setDays] = useState(5);
+  const [picking, setPicking] = useState(!compact);
+  if (!picking) {
+    return (
+      <button className="btn btn-sm btn-ghost" onClick={() => setPicking(true)}>
+        {label}
+      </button>
+    );
+  }
+  return (
+    <span className="extend-link">
+      <select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Extend by">
+        {[1, 2, 3, 4, 5].map((d) => (
+          <option key={d} value={d}>
+            {d} day{d === 1 ? '' : 's'} from today
+          </option>
+        ))}
+      </select>
+      <button
+        className="btn btn-sm btn-primary"
+        onClick={async () => {
+          await onExtend(days);
+          if (compact) setPicking(false);
+        }}
+      >
+        {label}
+      </button>
+    </span>
   );
 }
 

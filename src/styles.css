@@ -2308,7 +2308,7 @@ label {
   padding: 10px 12px;
 }
 .preview-list li.expired {
-  opacity: 0.6;
+  background: var(--bg);
 }
 .preview-url {
   display: block;
@@ -2373,4 +2373,14 @@ label {
   border-top: 1px solid var(--border);
   padding-top: 8px;
   margin-top: -4px;
+}
+.extend-link {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.extend-link select {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 0.85rem;
 }

@@ -970,3 +970,34 @@ test('client review link shows who viewed it; the agency’s own signed-in visit
   r = await api('GET', `/api/projects/${projectId}/previews`);
   assert.deepEqual(r.data.links[0].views.map((v) => v.name), ['Prospect']);
 });
+
+test('an expired or turned-off preview link can be extended, keeping the same address', async () => {
+  await api('POST', '/api/auth/register', { email: 'extend@studio.test', name: 'Studio', password: 'password1' });
+  let r = await api('POST', '/api/projects', { name: 'Extend', notify_emails: 'pm@studio.test' });
+  const projectId = r.data.project.id;
+  r = await api('POST', `/api/projects/${projectId}/previews`, { days: 1, label: 'Acme' });
+  const link = r.data.links[0];
+  const { DatabaseSync } = await import('node:sqlite');
+  const raw = new DatabaseSync(path.join(dir, 'test.db'));
+  raw.prepare(`UPDATE preview_links SET expires_at = datetime('now', '-2 days') WHERE id = ?`).run(link.id);
+  raw.close();
+  r = await api('GET', `/api/preview/${link.token}`, undefined, { agency: false });
+  assert.equal(r.status, 410);
+
+  r = await api('POST', `/api/projects/${projectId}/previews/${link.id}/extend`, { days: 6 });
+  assert.equal(r.status, 400, 'still at most 5 days');
+  r = await api('POST', `/api/projects/${projectId}/previews/${link.id}/extend`, { days: 3 });
+  assert.equal(r.status, 200);
+  const extended = r.data.links[0];
+  assert.equal(extended.token, link.token, 'same address');
+  const days = (Date.parse(`${extended.expires_at.replace(' ', 'T')}Z`) - Date.now()) / 864e5;
+  assert.ok(days > 2.9 && days <= 3, `3 days from now (${days})`);
+  r = await api('GET', `/api/preview/${link.token}`, undefined, { agency: false });
+  assert.equal(r.status, 200, 'works again');
+
+  await api('DELETE', `/api/projects/${projectId}/previews/${link.id}`);
+  r = await api('POST', `/api/projects/${projectId}/previews/${link.id}/extend`, { days: 5 });
+  assert.equal(r.data.links[0].revoked_at, null, 'extending turns it back on');
+  r = await api('GET', `/api/projects/${projectId}`);
+  assert.match(r.data.events[0].message, /Preview link for Acme extended by 5 days/);
+});

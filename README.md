@@ -25,7 +25,9 @@ approval and a "development has started" hand-off.
   signed in to the dashboard aren't counted, here or on preview links.
 - **Preview links for prospects** (on the project page): a comment-free link to the latest designs, valid 1–5 days.
   Viewers only enter their name, then land on the home page and browse it like the real website (through its own
-  menus, with a loading screen between pages). You see who opened it and how often, and can turn a link off early. When it expires,
+  menus, with a loading screen between pages). You see who opened it and how often, and can turn a link off early.
+  An expired (or turned-off) link can be **extended** by 1–5 days from today; the address stays the same, so a link
+  you already sent works again. When it expires,
   the link and the prototype pages behind it stop working.
 - See feedback live, mark comments **Done** or **Discussed**, and reply. Tick **📌 Important** on a reply when the
   client must see it. Each reply shows whether the client has read it ("Read by Kei · 2h ago").
